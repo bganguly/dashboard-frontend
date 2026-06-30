@@ -6,11 +6,19 @@ Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/spri
 
 ## Local Dev
 
+**Step 1 — start the backend first** ([springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend)):
+
+```bash
+./scripts/local-dev.sh   # run from the backend repo
+```
+
+**Step 2 — start the frontend:**
+
 ```bash
 npm install && npm run dev
 ```
 
-Opens http://localhost:3004. Requires Node 18+ and the backend running on :8080 (start it with `./scripts/local-dev.sh` in the backend repo).
+Opens http://localhost:3004. Requires Node 18+.
 
 Override the proxy target if the backend is elsewhere: `BACKEND_URL=http://other-host:8080 npm run dev`
 

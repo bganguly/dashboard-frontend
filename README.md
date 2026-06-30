@@ -7,14 +7,15 @@ Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/spri
 ## Local Dev
 
 ```bash
-node --version   # must be 18+
 npm install
 npm run dev
 ```
 
 Opens http://localhost:3004. Vite proxies `/api/*` to `http://localhost:8080` automatically.
 
-**Prerequisites:** backend running on http://localhost:8080 — see [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend) (`./scripts/local-dev.sh`).
+**Prerequisites:**
+- **Node 18+** — `npm install` will fail with a clear version error if not met
+- **Backend on :8080** — start it first with `./scripts/local-dev.sh` in [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend)
 
 Set `BACKEND_URL` to override the proxy target:
 

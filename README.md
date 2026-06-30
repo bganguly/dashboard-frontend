@@ -6,23 +6,15 @@ Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/spri
 
 ## Local Dev
 
-### Prerequisites
-
-- Node 18+, npm
-- Backend running on http://localhost:8080 — see [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend) Quick Start
-
-### Quick Start (first time)
-
 ```bash
-# 1. Check Node version (need 18+)
-node --version
-
-# 2. Install and start
+node --version   # must be 18+
 npm install
 npm run dev
 ```
 
 Opens http://localhost:3004. Vite proxies `/api/*` to `http://localhost:8080` automatically.
+
+**Prerequisites:** backend running on http://localhost:8080 — see [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend) (`./scripts/local-dev.sh`).
 
 Set `BACKEND_URL` to override the proxy target:
 
@@ -43,7 +35,6 @@ Output goes to `dist/`. Served by the Nginx config in `nginx.conf.template`.
 The `Dockerfile` builds a multi-stage image (Vite build → Nginx). Deploy alongside the backend:
 
 ```bash
-# build and push
 IMAGE=us-central1-docker.pkg.dev/<project>/<registry>/frontend:<tag>
 docker build --platform linux/amd64 -t "$IMAGE" .
 docker push "$IMAGE"

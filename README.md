@@ -2,18 +2,22 @@
 
 React 19 + Vite + TypeScript frontend for the orders dashboard. Proxies `/api/*` to the Spring Boot backend in dev; served via Nginx in production.
 
-Sister repos: [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend) · [typescript-implementations](https://github.com/bganguly/typescript-implementations) (Next.js variant).
+Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend)
 
 ## Local Dev
 
 ### Prerequisites
 
 - Node 18+, npm
-- [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend) running on http://localhost:8080
+- Backend running on http://localhost:8080 — see [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend) Quick Start
 
-### Start
+### Quick Start (first time)
 
 ```bash
+# 1. Check Node version (need 18+)
+node --version
+
+# 2. Install and start
 npm install
 npm run dev
 ```

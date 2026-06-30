@@ -23,14 +23,6 @@ Set `BACKEND_URL` to override the proxy target:
 BACKEND_URL=http://other-host:8080 npm run dev
 ```
 
-## Build
-
-```bash
-npm run build
-```
-
-Output goes to `dist/`. Served by the Nginx config in `nginx.conf.template`.
-
 ## Deploy (GCP Cloud Run)
 
 The `Dockerfile` builds a multi-stage image (Vite build → Nginx). Deploy alongside the backend:
@@ -41,3 +33,11 @@ docker build --platform linux/amd64 -t "$IMAGE" .
 docker push "$IMAGE"
 gcloud run deploy dashboard-frontend --image "$IMAGE" --region us-central1
 ```
+
+## Build
+
+```bash
+npm run build
+```
+
+Output goes to `dist/`. Served by the Nginx config in `nginx.conf.template`.

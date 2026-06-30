@@ -25,11 +25,10 @@ Override the proxy target if the backend is elsewhere: `BACKEND_URL=http://other
 ## Deploy (GCP Cloud Run)
 
 ```bash
-IMAGE=us-central1-docker.pkg.dev/<project>/<registry>/frontend:<tag>
-docker build --platform linux/amd64 -t "$IMAGE" .
-docker push "$IMAGE"
-gcloud run deploy dashboard-frontend --image "$IMAGE" --region us-central1
+./scripts/deploy.sh
 ```
+
+Detects GCP project, region, and Artifact Registry repo from your local `gcloud` config and prompts to confirm or override each. Defaults the image tag to the current git commit hash. Builds, pushes, and deploys — prints the Cloud Run URL when done.
 
 The `Dockerfile` builds a multi-stage image (Vite build → Nginx).
 

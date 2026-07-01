@@ -90,7 +90,6 @@ All infra state is tracked in the Pulumi stack — no manual `gcloud run deploy`
 | | URL |
 |---|---|
 | **Frontend** | https://dash-frontend-7u2hpcwtmq-uc.a.run.app |
-| **Backend API** | https://dash-backend-7u2hpcwtmq-uc.a.run.app |
 
 ### Quick test — local (via Vite dev-server proxy)
 

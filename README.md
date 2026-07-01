@@ -132,7 +132,7 @@ curl "$BASE/api/aggregates?from=2024-01-01&to=2024-12-31" | jq 'length'
 All resources are destroyed from the backend repo:
 
 ```bash
-GCP_PROJECT=your-project-id ./scripts/infra-down.sh   # from springboot-gcp-dashboard-backend
+./scripts/infra-down.sh   # from springboot-gcp-dashboard-backend
 ```
 
 This runs `pulumi destroy --yes` which removes both the frontend and backend Cloud Run services,

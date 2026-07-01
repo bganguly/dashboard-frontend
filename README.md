@@ -21,21 +21,12 @@ Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/spri
 
 ---
 
-## Tech Stack
-
-**Frontend:** React 19, TypeScript, Vite, Tailwind CSS, Recharts  
-**Server:** Nginx (BFF proxy + static file server)  
-**Cloud:** GCP Cloud Run (serverless, 0–3 instances), Artifact Registry  
-**IaC:** Pulumi TypeScript (managed from `springboot-gcp-dashboard-backend/infra/`)  
-**Build:** Multi-stage Dockerfile — `node:22-alpine` (Vite build) → `nginx:alpine`
-
----
-
 ## Features
 
-- **Orders table** — paginated, sortable (date / total / status), filter sidebar (status, region, date range, total range)
+- **Orders table** — paginated, sortable (ID / customer / status / total / date), filter sidebar (status, region, date range, total range)
 - **Full-text search** — multi-token AND search across all visible columns (name, notes, total, order ID, status, region, date) via backend `search_text` GIN trigram index; sub-second responses on 4 M rows
-- **Aggregates chart** — stacked bar chart of daily orders by product category; Recharts brush for date range zoom; sub-second responses from pre-aggregated tables, never queries raw orders
+- **Aggregates chart** — stacked bar chart of daily orders by product category; sub-second responses from pre-aggregated tables, never queries raw orders
+- **Date brush** — Recharts brush control on the aggregates chart; drag to zoom into any date window, releases back to the selected date range
 - **Dark mode** — system-preference detection via `useIsDark` hook
 - **BFF proxy** — Nginx forwards `/api/*` to Spring Boot with `proxy_ssl_server_name on`; browser sees a single origin, no CORS
 

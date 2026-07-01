@@ -7,10 +7,6 @@ routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
 Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend)
 
-> **Infrastructure note:** all GCP resources — including this Cloud Run service — are declared in
-> `springboot-gcp-dashboard-backend/infra/index.ts` (Pulumi). The frontend `deploy.sh` sets
-> `pulumi config set frontendImage` then delegates to `pulumi up --yes` in that directory.
-
 ---
 
 | | |

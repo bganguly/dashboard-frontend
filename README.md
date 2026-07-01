@@ -13,9 +13,7 @@ Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/spri
 
 ---
 
-## CVS JD Alignment
-
-| JD Requirement | This Project |
+| | |
 |---|---|
 | **React / TypeScript front-end** | React 19, TypeScript, Vite, Tailwind CSS, Recharts |
 | **BFF layer** | Nginx reverse proxy: `/api/*` → Spring Boot (TLS + `proxy_ssl_server_name on` for Cloud Run SNI) |

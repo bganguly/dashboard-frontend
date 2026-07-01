@@ -104,7 +104,6 @@ interface ColumnDef {
 const COLUMNS: ColumnDef[] = [
   { key: "id",       label: "ID",       sortKey: "id",       render: (r) => formatCell(r.id) },
   { key: "customer", label: "Customer", sortKey: "customer", render: renderCustomer },
-  { key: "status",   label: "Status",   sortKey: "status",   render: (r) => formatCell(r.status) },
   { key: "items",    label: "Items",    numeric: true,        render: renderItems },
   { key: "total",    label: "Total",    numeric: true, sortKey: "total",    render: renderTotal },
   { key: "notes",    label: "Notes",                          render: (r) => formatCell(r.notes) },

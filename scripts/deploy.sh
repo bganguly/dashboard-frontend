@@ -32,10 +32,16 @@ fi
 
 ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
 if [[ -z "$ACTIVE_ACCOUNT" ]]; then
-  printf '\nNot authenticated with gcloud.\n'
-  printf '  Run: gcloud auth login\n'
-  printf '  Or:  https://console.cloud.google.com\n'
-  exit 1
+  printf '\nNot authenticated with gcloud. Log in now? [y/N] '
+  read -r do_login
+  if [[ "$do_login" =~ ^[Yy]$ ]]; then
+    gcloud auth login
+    ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
+    [[ -n "$ACTIVE_ACCOUNT" ]] || { printf 'Login did not complete. Exiting.\n' >&2; exit 1; }
+  else
+    printf 'Exiting. Run: gcloud auth login\n'
+    exit 1
+  fi
 fi
 
 printf '\nAuthenticated as: %s\n' "$ACTIVE_ACCOUNT"

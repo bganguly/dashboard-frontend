@@ -5,67 +5,80 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-prompt() {
-  local var="$1" label="$2" default="$3"
-  if [[ -n "$default" ]]; then
-    printf '  %s [%s]: ' "$label" "$default"
-  else
-    printf '  %s: ' "$label"
-  fi
+ask() {
+  local label="$1" hint="$2" default="$3"
+  printf '\n  %s\n' "$label"
+  [[ -n "$hint"    ]] && printf '  → %s\n' "$hint"
+  [[ -n "$default" ]] && printf '  [detected: %s]\n' "$default"
+  printf '  > '
   read -r input
   echo "${input:-$default}"
 }
 
-# ── detect defaults from gcloud ───────────────────────────────────────────────
-printf '\n=== detecting GCP context ===\n'
+# ── gcloud auth check ─────────────────────────────────────────────────────────
+if ! command -v gcloud >/dev/null 2>&1; then
+  printf '\ngcloud CLI not found.\n'
+  printf '  Install: https://cloud.google.com/sdk/docs/install\n'
+  exit 1
+fi
 
-if command -v gcloud >/dev/null 2>&1; then
-  DETECTED_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
-  DETECTED_REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
-  DETECTED_REGION="${DETECTED_REGION:-us-central1}"
+ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
+if [[ -z "$ACTIVE_ACCOUNT" ]]; then
+  printf '\nNot authenticated with gcloud.\n'
+  printf '  Run: gcloud auth login\n'
+  printf '  Or:  https://console.cloud.google.com\n'
+  exit 1
+fi
 
-  # try to find an Artifact Registry repo in the detected project/region
-  if [[ -n "$DETECTED_PROJECT" ]]; then
-    DETECTED_REGISTRY=$(gcloud artifacts repositories list \
-      --project="$DETECTED_PROJECT" \
-      --location="$DETECTED_REGION" \
-      --format="value(name)" 2>/dev/null | head -1 || true)
-    # gcloud returns the full resource name; extract just the repo id
-    DETECTED_REGISTRY="${DETECTED_REGISTRY##*/}"
-  fi
-else
-  printf '  gcloud not found — all values will need to be entered manually\n'
-  DETECTED_PROJECT=""
-  DETECTED_REGION="us-central1"
-  DETECTED_REGISTRY=""
+printf '\nAuthenticated as: %s\n' "$ACTIVE_ACCOUNT"
+
+# ── detect from gcloud config ─────────────────────────────────────────────────
+DETECTED_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
+DETECTED_REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
+DETECTED_REGION="${DETECTED_REGION:-us-central1}"
+
+DETECTED_REGISTRY=""
+if [[ -n "$DETECTED_PROJECT" ]]; then
+  DETECTED_REGISTRY=$(gcloud artifacts repositories list \
+    --project="$DETECTED_PROJECT" \
+    --location="$DETECTED_REGION" \
+    --format="value(name)" 2>/dev/null | head -1 || true)
+  DETECTED_REGISTRY="${DETECTED_REGISTRY##*/}"
 fi
 
 DETECTED_TAG=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d)
 
-[[ -n "$DETECTED_PROJECT"  ]] && printf '  project   : %s\n' "$DETECTED_PROJECT"
-[[ -n "$DETECTED_REGION"   ]] && printf '  region    : %s\n' "$DETECTED_REGION"
-[[ -n "$DETECTED_REGISTRY" ]] && printf '  registry  : %s\n' "$DETECTED_REGISTRY"
-printf '  tag       : %s\n' "$DETECTED_TAG"
+# ── prompt ────────────────────────────────────────────────────────────────────
+printf '\n=== deployment config ===\n'
 
-# ── prompt for values ─────────────────────────────────────────────────────────
-printf '\n=== confirm or override ===\n'
+GCP_PROJECT=$(ask \
+  "GCP project ID" \
+  "Find it at: https://console.cloud.google.com — top nav project selector, or: gcloud projects list" \
+  "$DETECTED_PROJECT")
+[[ -n "$GCP_PROJECT" ]] || { printf '\nProject ID is required.\n' >&2; exit 1; }
 
-GCP_PROJECT=$(prompt "GCP_PROJECT" "GCP project" "$DETECTED_PROJECT")
-[[ -n "$GCP_PROJECT" ]] || { printf 'GCP project is required.\n' >&2; exit 1; }
+GCP_REGION=$(ask \
+  "Region" \
+  "Common: us-central1, us-east1, europe-west1 — or: gcloud compute regions list" \
+  "$DETECTED_REGION")
 
-GCP_REGION=$(prompt "GCP_REGION" "region" "$DETECTED_REGION")
+REGISTRY=$(ask \
+  "Artifact Registry repo name" \
+  "Find it at: https://console.cloud.google.com/artifacts?project=${GCP_PROJECT} — or: gcloud artifacts repositories list --project=${GCP_PROJECT} --location=${GCP_REGION}" \
+  "$DETECTED_REGISTRY")
+[[ -n "$REGISTRY" ]] || { printf '\nRegistry repo name is required.\n' >&2; exit 1; }
 
-REGISTRY=$(prompt "REGISTRY" "Artifact Registry repo name" "$DETECTED_REGISTRY")
-[[ -n "$REGISTRY" ]] || { printf 'Registry repo name is required.\n' >&2; exit 1; }
-
-TAG=$(prompt "TAG" "image tag" "$DETECTED_TAG")
+TAG=$(ask \
+  "Image tag" \
+  "Leave blank to use the detected git hash" \
+  "$DETECTED_TAG")
 
 IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend:${TAG}"
 
 # ── confirm ───────────────────────────────────────────────────────────────────
 printf '\nWill build and push:\n'
 printf '  %s\n' "$IMAGE"
-printf '\nThen deploy to Cloud Run as dashboard-frontend in %s.\n' "$GCP_REGION"
+printf 'Then deploy to Cloud Run in %s.\n' "$GCP_REGION"
 printf '\nProceed? [y/N] '
 read -r yn
 [[ "$yn" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
@@ -87,7 +100,7 @@ gcloud run deploy dashboard-frontend \
   --region "$GCP_REGION" \
   --project "$GCP_PROJECT"
 
-printf '\nDone. Service URL:\n'
+printf '\nDone. Service URL:\n  '
 gcloud run services describe dashboard-frontend \
   --region "$GCP_REGION" \
   --project "$GCP_PROJECT" \

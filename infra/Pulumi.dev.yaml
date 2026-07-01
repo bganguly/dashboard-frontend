@@ -1,0 +1,6 @@
+config:
+  gcp:project: bikram-springboot
+  gcp:region: us-central1
+  dashboard-frontend:namePrefix: dash
+  dashboard-frontend:backendUrl: https://dash-backend-7u2hpcwtmq-uc.a.run.app
+  dashboard-frontend:frontendImage: us-central1-docker.pkg.dev/bikram-springboot/dash-repo/frontend:norange-20260701021714

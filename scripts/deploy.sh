@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INFRA_DIR="$ROOT_DIR/infra"
 BACKEND_INFRA_DIR="$(cd "$ROOT_DIR/../springboot-gcp-dashboard-backend/infra" && pwd)"
 ENV_FILE="$ROOT_DIR/../springboot-gcp-dashboard-backend/.env.gcp"
 cd "$ROOT_DIR"
@@ -138,12 +139,17 @@ fi
 
 # ── deploy via pulumi ─────────────────────────────────────────────────────────
 printf '\n=== deploying via Pulumi ===\n'
-cd "$BACKEND_INFRA_DIR"
+
+BACKEND_URL=$(cd "$BACKEND_INFRA_DIR" && pulumi stack output backendUrl 2>/dev/null || true)
+[[ -n "$BACKEND_URL" ]] || { printf '\nCould not read backendUrl from backend Pulumi stack — run the backend deploy first.\n' >&2; exit 1; }
+
+cd "$INFRA_DIR"
 npm install --prefer-offline 2>/dev/null || npm install
 pulumi stack select "dev" 2>/dev/null || pulumi stack init "dev"
-pulumi config set gcp:project "$GCP_PROJECT"
-pulumi config set gcp:region  "$GCP_REGION"
-pulumi config set frontendImage "$IMAGE"
+pulumi config set gcp:project    "$GCP_PROJECT"
+pulumi config set gcp:region     "$GCP_REGION"
+pulumi config set backendUrl     "$BACKEND_URL"
+pulumi config set frontendImage  "$IMAGE"
 pulumi up --yes
 
 FRONTEND_URL=$(pulumi stack output frontendUrl 2>/dev/null || true)

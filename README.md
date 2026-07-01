@@ -115,14 +115,15 @@ curl "$BASE/api/aggregates?from=2024-01-01&to=2024-12-31" | jq 'length'
 
 > **FYI:** The frontend Cloud Run service scales to zero — no idle compute cost. However, Cloud SQL, the VPC connector, and the backend Cloud Run service (min 1 instance) all bill continuously. Full teardown must be run from the backend repo.
 
-All resources are destroyed from the backend repo:
+The frontend has its own Pulumi stack (`dashboard-frontend/infra/`). Tear down independently:
 
 ```bash
+# frontend only (Cloud Run service — no cost when scaled to zero anyway)
+cd infra && pulumi destroy --yes
+
+# full backend teardown (Cloud SQL, VPC, Secret Manager, Artifact Registry)
 ./scripts/infra-down.sh   # from springboot-gcp-dashboard-backend
 ```
-
-This runs `pulumi destroy --yes` which removes both the frontend and backend Cloud Run services,
-Cloud SQL, VPC, Secret Manager secrets, Artifact Registry, and all IAM bindings.
 
 ---
 

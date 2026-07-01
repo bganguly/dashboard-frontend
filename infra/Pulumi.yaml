@@ -1,0 +1,3 @@
+name: dashboard-frontend
+runtime: nodejs
+description: Dashboard frontend Cloud Run service

@@ -51,7 +51,7 @@ const compact = (n: number) => {
 const full = (n: number) => n.toLocaleString();
 
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
-function defaultRange() { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 30); return { from: isoDay(from), to: isoDay(to) }; }
+function defaultRange() { return { from: "2020-01-01", to: isoDay(new Date()) }; }
 
 interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; }
 

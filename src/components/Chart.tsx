@@ -84,12 +84,13 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   }, [endpoint, topN, filters, searchQuery]);
 
   useEffect(() => {
-    if (!filters?.from && !filters?.to) setRange(defaultRange);
-  }, [filters?.from, filters?.to]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchAggregates(range.from, range.to);
+    if (!filters?.from && !filters?.to) {
+      const r = defaultRange();
+      setRange(r);
+      fetchAggregates(r.from, r.to);
+    } else {
+      fetchAggregates(range.from, range.to);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchAggregates]);
 

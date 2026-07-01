@@ -152,8 +152,8 @@ export default function SearchTable({
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [approximate, setApproximate] = useState(false);
-  const [sort, setSort] = useState<string>("");
-  const [dir, setDir] = useState<SortDir>("asc");
+  const [sort, setSort] = useState<string>("placedAt");
+  const [dir, setDir] = useState<SortDir>("desc");
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

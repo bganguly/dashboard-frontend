@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cloneElement, type ReactElement } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Chart, { type RawAggregate } from "./Chart";
 import { EMPTY_FILTERS } from "./FilterSidebar";
+
+type BrushRange = { startIndex?: number; endIndex?: number };
+
+// Captures the Brush onChange handler so tests can drive drags in memory,
+// without the real SVG layout jsdom can't do.
+const captured = vi.hoisted(() => ({
+  brushOnChange: undefined as ((range: BrushRange) => void) | undefined,
+}));
 
 // jsdom gives ResponsiveContainer zero size; hand the chart a fixed one instead.
 vi.mock("recharts", async (importOriginal) => {
@@ -12,6 +20,10 @@ vi.mock("recharts", async (importOriginal) => {
     ...original,
     ResponsiveContainer: ({ children }: { children: ReactElement }) =>
       cloneElement(children, { width: 800, height: 320 } as object),
+    Brush: (props: { onChange?: (range: BrushRange) => void }) => {
+      captured.brushOnChange = props.onChange;
+      return null;
+    },
   };
 });
 
@@ -36,7 +48,21 @@ function mockFetchOnce(body: unknown, ok = true, status = 200) {
 beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
+  captured.brushOnChange = undefined;
 });
+
+/** Renders a chart with three days of data and waits for the brush to mount. */
+async function renderWithBrush(onRangeChange?: (from: string, to: string) => void) {
+  mockFetchOnce({
+    data: [
+      day("2026-01-01", { A: 1 }),
+      day("2026-01-02", { A: 2 }),
+      day("2026-01-03", { A: 3 }),
+    ],
+  });
+  render(<Chart onRangeChange={onRangeChange} />);
+  await waitFor(() => expect(captured.brushOnChange).toBeDefined());
+}
 
 describe("Chart", () => {
   it("shows 'No data.' when the API returns nothing", async () => {
@@ -95,5 +121,58 @@ describe("Chart", () => {
     expect(screen.getByText("Others")).toBeInTheDocument();
     await user.click(othersToggle);
     expect(othersToggle).toBeChecked();
+  });
+
+  it("brush drag refetches the selected range (debounced) and notifies the parent", async () => {
+    const onRangeChange = vi.fn();
+    await renderWithBrush(onRangeChange);
+
+    mockFetchOnce({ data: [] });
+    act(() => captured.brushOnChange!({ startIndex: 0, endIndex: 1 }));
+
+    // header range updates immediately; the fetch waits for the 250ms debounce
+    expect(screen.getByText(/2026-01-01 → 2026-01-02/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const url = fetchMock.mock.calls[1][0] as string;
+    expect(url).toContain("from=2026-01-01");
+    expect(url).toContain("to=2026-01-02");
+    expect(onRangeChange).toHaveBeenCalledWith("2026-01-01", "2026-01-02");
+  });
+
+  it("coalesces rapid brush drags into one fetch", async () => {
+    await renderWithBrush();
+
+    mockFetchOnce({ data: [] });
+    act(() => captured.brushOnChange!({ startIndex: 0, endIndex: 1 }));
+    act(() => captured.brushOnChange!({ startIndex: 0, endIndex: 2 }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toContain("to=2026-01-03");
+    // no third fetch from the superseded first drag
+    await new Promise((r) => setTimeout(r, 300));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores incomplete, out-of-range, and unchanged brush ranges", async () => {
+    await renderWithBrush();
+
+    act(() => captured.brushOnChange!({ startIndex: undefined, endIndex: 1 }));
+    act(() => captured.brushOnChange!({ startIndex: 0, endIndex: 99 }));
+    act(() => captured.brushOnChange!({ startIndex: -1, endIndex: 1 }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // a real drag, then the same range again — the repeat is a no-op.
+    // Return the same days so the brush (and its buckets) stays mounted.
+    mockFetchOnce({
+      data: [day("2026-01-01", { A: 1 }), day("2026-01-02", { A: 2 }), day("2026-01-03", { A: 3 })],
+    });
+    act(() => captured.brushOnChange!({ startIndex: 0, endIndex: 1 }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    act(() => captured.brushOnChange!({ startIndex: 0, endIndex: 1 }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

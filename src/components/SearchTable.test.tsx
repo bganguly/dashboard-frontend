@@ -219,6 +219,35 @@ describe("SearchTable", () => {
     expect(url).not.toContain("cursorId");
   });
 
+  it("uses the keyset cursor when clicking the sibling page number, not just the Next button", async () => {
+    const user = userEvent.setup();
+    mockFetchOnce(
+      response({
+        totalPages: 20,
+        total: 400,
+        data: [orderRow(1, { placedAt: "2026-01-15T10:30:00.000Z" })],
+      }),
+    );
+    render(<SearchTable />);
+    await screen.findByTestId("search-result");
+
+    // On page 1 of 20, the windowed pagination shows "2" as a sibling link —
+    // clicking that number is the same destination as clicking Next.
+    mockFetchOnce(
+      response({
+        totalPages: 20,
+        total: 400,
+        page: 2,
+        data: [orderRow(2, { placedAt: "2026-01-14T10:30:00.000Z" })],
+      }),
+    );
+    await user.click(within(screen.getByTestId("page-2")).getByRole("button"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const url = fetchMock.mock.calls[1][0] as string;
+    expect(url).toContain("cursorId=1");
+    expect(url).toContain("cursorDir=next");
+  });
+
   it("appends the sidebar filters to the request", async () => {
     mockFetchOnce(response());
     render(

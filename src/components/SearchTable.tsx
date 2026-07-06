@@ -702,11 +702,22 @@ export default function SearchTable({
                   );
                 }
                 const isActive = item === page;
+                // The windowed numbers immediately next to the current page
+                // (current-1/current+1) are the exact same destination as
+                // Prev/Next — route them through the same cursor path so
+                // clicking the number instead of the button doesn't fall
+                // back to a slow OFFSET query at depth.
+                const handleClick =
+                  item === page - 1
+                    ? () => goToAdjacentPage("prev")
+                    : item === page + 1
+                      ? () => goToAdjacentPage("next")
+                      : () => goToPage(item);
                 return (
                   <li key={item} data-testid={`page-${item}`}>
                     <button
                       type="button"
-                      onClick={() => goToPage(item)}
+                      onClick={handleClick}
                       aria-current={isActive ? "page" : undefined}
                       data-testid={isActive ? "current-page" : undefined}
                       className={cn(

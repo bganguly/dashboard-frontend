@@ -58,7 +58,7 @@ Browser ──HTTPS──► Nginx / Cloud Run ──proxy /api/* (SNI)──►
 npm install && npm run dev
 ```
 
-Opens http://localhost:3004. Node 18+ required.
+Opens http://localhost:3006. Node 18+ required.
 
 Override the proxy target if the backend runs elsewhere:
 
@@ -94,9 +94,9 @@ All infra state is tracked in the Pulumi stack — no manual `gcloud run deploy`
 ### Quick test — local (via Vite dev-server proxy)
 
 ```bash
-curl "http://localhost:3004/api/orders?page=1&size=3" | jq .total
-curl "http://localhost:3004/api/orders?q=ava+ito&page=1&size=3" | jq '.data[].customer'
-curl "http://localhost:3004/api/aggregates?from=2024-01-01&to=2024-12-31" | jq 'length'
+curl "http://localhost:3006/api/orders?page=1&size=3" | jq .total
+curl "http://localhost:3006/api/orders?q=ava+ito&page=1&size=3" | jq '.data[].customer'
+curl "http://localhost:3006/api/aggregates?from=2024-01-01&to=2024-12-31" | jq 'length'
 ```
 
 ### Quick test — deployed (via Nginx proxy)

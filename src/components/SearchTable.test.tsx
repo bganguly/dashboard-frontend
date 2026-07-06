@@ -95,6 +95,28 @@ describe("SearchTable", () => {
     expect(onQueryChange).toHaveBeenLastCalledWith("smith");
   });
 
+  it("recommits immediately when the input is cleared (e.g. the native ×)", async () => {
+    const user = userEvent.setup();
+    mockFetchOnce(response());
+    const onQueryChange = vi.fn();
+    render(<SearchTable onQueryChange={onQueryChange} />);
+    await screen.findByTestId("search-result");
+
+    mockFetchOnce(response());
+    const input = screen.getByTestId("search-input");
+    await user.type(input, "smith");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // Clearing fires only a change event (no keydown) — same as clicking the
+    // native type="search" × button — and must recommit without an Enter.
+    mockFetchOnce(response());
+    await user.clear(input);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2][0]).toContain("q=&");
+    expect(onQueryChange).toHaveBeenLastCalledWith("");
+  });
+
   it("toggles sort column and direction via the headers", async () => {
     const user = userEvent.setup();
     mockFetchOnce(response());
@@ -156,7 +178,9 @@ describe("SearchTable", () => {
     mockFetchOnce(response({ total: 1000, approximate: true }));
     render(<SearchTable />);
 
-    expect(await screen.findByText(/1,000\+ results/)).toBeInTheDocument();
+    const total = await screen.findByTestId("search-total");
+    expect(total).toHaveTextContent("1,000+");
+    expect(total).toHaveAttribute("data-total", "1000");
   });
 
   it("reports fetched rows through onRows", async () => {

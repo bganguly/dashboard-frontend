@@ -225,10 +225,11 @@ export default function SearchTable({
     [endpoint, pageSize],
   );
 
-  // Search commits on Enter only (Task 19) — typing updates the input value but
-  // does NOT fetch. The Enter handler (and clear+Enter) is the sole path that
-  // sets `debouncedQuery`, which drives both the list fetch below and the
-  // parent's chart aggregates via onQueryChange. No as-you-type timer.
+  // Search commits on Enter, or immediately when the input is cleared (typing
+  // otherwise updates the input value but does NOT fetch — no as-you-type
+  // timer). Clearing includes the native × on type="search", which only fires
+  // onChange, not onKeyDown. Either path sets `debouncedQuery`, which drives
+  // both the list fetch below and the parent's chart aggregates via onQueryChange.
 
   // Notify the parent of the active (committed) query so the chart can narrow
   // its aggregates to the same matching set.
@@ -395,7 +396,13 @@ export default function SearchTable({
           data-testid="search-input"
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (e.target.value === "") {
+              setDebouncedQuery("");
+              setPage(1);
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               // Commit the search: list + aggregates repaint. Also the clear+Enter
@@ -529,9 +536,9 @@ export default function SearchTable({
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Page {page} of {totalPages} ·{" "}
-          {approximate
-            ? `${total.toLocaleString()}+`
-            : total.toLocaleString()}{" "}
+          <span data-testid="search-total" data-total={total}>
+            {approximate ? `${total.toLocaleString()}+` : total.toLocaleString()}
+          </span>{" "}
           results
         </span>
 

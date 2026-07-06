@@ -50,6 +50,16 @@ const compact = (n: number) => {
 };
 const full = (n: number) => n.toLocaleString();
 
+// "2026-06-05" -> "Jun 5" — the Brush centers each tick label on its data
+// point, so the first/last ticks always have half their text overflowing the
+// plot edge. A short label keeps that overflow small enough to stay inside
+// the chart's margin instead of being clipped by the card.
+function compactBrushDate(value: string) {
+  const d = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
 function defaultRange() { return { from: "2020-01-01", to: isoDay(new Date()) }; }
 
@@ -57,42 +67,61 @@ interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters;
 
 export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange }: ChartProps) {
   const [rawData, setRawData] = useState<RawAggregate[]>([]);
+  // Exact distinct order count from the backend (AggregateController's
+  // totalOrders) — null until the first response lands, then preferred over
+  // summing category rows (see summedCategoryOrders fallback below).
+  const [exactTotal, setExactTotal] = useState<number | null>(null);
   const [range, setRange] = useState(defaultRange);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A brush drag calls fetchAggregates directly, then (via onRangeChange)
+  // updates the parent's filters — which changes filters?.from/to and
+  // re-fires the effect below with the exact same resulting request. Track
+  // the last request's querystring so that echo is a no-op instead of a
+  // second full round trip to the backend.
+  const lastRequestKeyRef = useRef<string | null>(null);
 
   const fetchAggregates = useCallback(async (from: string, to: string) => {
+    const params = new URLSearchParams({ from: filters?.from || from, to: filters?.to || to });
+    params.set("topCategories", String(topN));
+    appendFilterParams(params, filters);
+    if (searchQuery) params.set("q", searchQuery);
+    const requestKey = params.toString();
+    if (requestKey === lastRequestKeyRef.current) return;
+    lastRequestKeyRef.current = requestKey;
+
     abortRef.current?.abort();
     const ctrl = new AbortController(); abortRef.current = ctrl;
     setLoading(true); setError(null);
     try {
-      const params = new URLSearchParams({ from: filters?.from || from, to: filters?.to || to });
-      params.set("topCategories", String(topN));
-      appendFilterParams(params, filters);
-      if (searchQuery) params.set("q", searchQuery);
       const res = await fetch(`${endpoint}?${params}`, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setRawData(Array.isArray(json.data) ? json.data : []);
+      setExactTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
+      lastRequestKeyRef.current = null; // allow a retry of the same params after a real failure
       setError((err as Error).message);
     } finally { setLoading(false); }
   }, [endpoint, topN, filters, searchQuery]);
 
+  // from/to are recomputed from filters (not read from `range` state) so that
+  // clearing a sidebar date field takes effect immediately: `range` is only
+  // ever written by a brush drag, and once a brush drag also syncs into
+  // filters (onRangeChange), a stale range.to left behind after the filter
+  // was cleared would otherwise keep silently narrowing every refetch via
+  // fetchAggregates' `filters?.to || to` fallback forever.
   useEffect(() => {
-    if (!filters?.from && !filters?.to) {
-      const r = defaultRange();
-      setRange(r);
-      fetchAggregates(r.from, r.to);
-    } else {
-      fetchAggregates(range.from, range.to);
-    }
+    const from = filters?.from || defaultRange().from;
+    const to = filters?.to || defaultRange().to;
+    setRange({ from, to });
+    fetchAggregates(from, to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchAggregates]);
+  }, [fetchAggregates, filters?.from, filters?.to]);
 
   useEffect(() => () => { abortRef.current?.abort(); if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
 
@@ -100,6 +129,17 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const gridStroke = isDark ? "#374151" : "#e5e7eb";
   const axisColor  = isDark ? "#9ca3af" : "#6b7280";
   const tooltipStyle = { backgroundColor: isDark ? "#1f2937" : "#fff", border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`, borderRadius: 8, color: isDark ? "#f3f4f6" : "#111827" };
+
+  // Fallback total when the backend didn't send totalOrders — summing
+  // per-category counts OVERCOUNTS any order whose items span more than one
+  // category, since each such category gets totalOrders=1 for that order.
+  // Only used when exactTotal is unavailable; prefer that instead.
+  const summedCategoryOrders = useMemo(
+    () => rawData.reduce((sum, day) => sum + Object.values(day.categories ?? {}).reduce((s, c) => s + (c.totalOrders ?? 0), 0), 0),
+    [rawData],
+  );
+  const matchedOrders = exactTotal ?? summedCategoryOrders;
+  const isFiltered = Boolean(searchQuery || filters?.status?.length || filters?.regionCodes?.length || filters?.from || filters?.to || filters?.totalMin || filters?.totalMax);
 
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
@@ -146,6 +186,9 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
         <div>
           <h2 className="text-base font-semibold">Aggregates</h2>
           <p className="text-xs text-gray-500">{range.from} → {range.to}<span className="ml-2 text-gray-400">drag slider to rescan</span></p>
+          {isFiltered && matchedOrders > 0 && (
+            <p className="text-xs text-indigo-500">{matchedOrders.toLocaleString()} matched orders</p>
+          )}
         </div>
         {loading && <span className="text-xs text-indigo-500" aria-live="polite">updating…</span>}
       </header>
@@ -156,7 +199,11 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       ) : (
         <>
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={buckets} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            {/* The Y-axis (width={56} below) sits inside the left margin, so a
+                numerically equal left/right margin still leaves far less real
+                buffer on the right — right is padded by the Y-axis width too
+                so both sides give the Brush's edge labels the same clearance. */}
+            <BarChart data={buckets} margin={{ top: 8, right: 8 + 56, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
               <XAxis dataKey="date" fontSize={12} tickMargin={8} stroke={axisColor} tick={{ fill: axisColor }} />
               <YAxis fontSize={12} width={56} stroke={axisColor} tick={{ fill: axisColor }} tickFormatter={compact} />
@@ -180,6 +227,10 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                       </label>
                     );
                   })()}
+                  <span data-testid="aggregate-tile-total" data-total={matchedOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
+                    Total
+                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">{full(matchedOrders)}</span>
+                  </span>
                 </div>
               )} />
               {seriesKeys.map((key, i) => (
@@ -187,7 +238,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   radius={i === seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
                   shape={(props: object) => <g data-testid="chart-bar" data-category={key}><Rectangle {...props} /></g>} />
               ))}
-              <Brush dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} onChange={handleBrushChange} />
+              <Brush dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
             </BarChart>
           </ResponsiveContainer>
         </>

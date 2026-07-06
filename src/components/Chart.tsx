@@ -139,7 +139,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     [rawData],
   );
   const matchedOrders = exactTotal ?? summedCategoryOrders;
-  const isFiltered = Boolean(searchQuery || filters?.status?.length || filters?.regionCodes?.length || filters?.from || filters?.to || filters?.totalMin || filters?.totalMax);
 
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
@@ -186,9 +185,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
         <div>
           <h2 className="text-base font-semibold">Aggregates</h2>
           <p className="text-xs text-gray-500">{range.from} → {range.to}<span className="ml-2 text-gray-400">drag slider to rescan</span></p>
-          {isFiltered && matchedOrders > 0 && (
-            <p className="text-xs text-indigo-500">{matchedOrders.toLocaleString()} matched orders</p>
-          )}
         </div>
         {loading && <span className="text-xs text-indigo-500" aria-live="polite">updating…</span>}
       </header>

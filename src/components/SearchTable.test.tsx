@@ -160,6 +160,65 @@ describe("SearchTable", () => {
     await waitFor(() => expect(fetchMock.mock.calls[2][0]).toContain("page=20"));
   });
 
+  it("uses a keyset cursor for Next/Prev on the default sort, not plain OFFSET paging", async () => {
+    const user = userEvent.setup();
+    mockFetchOnce(
+      response({
+        totalPages: 20,
+        total: 400,
+        data: [orderRow(1, { placedAt: "2026-01-15T10:30:00.000Z" })],
+      }),
+    );
+    render(<SearchTable />);
+    await screen.findByTestId("search-result");
+
+    mockFetchOnce(
+      response({
+        totalPages: 20,
+        total: 400,
+        page: 2,
+        data: [orderRow(2, { placedAt: "2026-01-14T10:30:00.000Z" })],
+      }),
+    );
+    await user.click(screen.getByTestId("next-page"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const nextUrl = fetchMock.mock.calls[1][0] as string;
+    expect(nextUrl).toContain("cursorId=1");
+    expect(nextUrl).toContain("cursorDir=next");
+    expect(nextUrl).toContain("cursorPlacedAt=2026-01-15T10%3A30%3A00.000Z");
+
+    mockFetchOnce(
+      response({
+        totalPages: 20,
+        total: 400,
+        data: [orderRow(1, { placedAt: "2026-01-15T10:30:00.000Z" })],
+      }),
+    );
+    await user.click(screen.getByTestId("prev-page"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const prevUrl = fetchMock.mock.calls[2][0] as string;
+    expect(prevUrl).toContain("cursorId=2");
+    expect(prevUrl).toContain("cursorDir=prev");
+  });
+
+  it("falls back to plain OFFSET paging for Next when sorted by a non-default column", async () => {
+    const user = userEvent.setup();
+    mockFetchOnce(response({ totalPages: 20, total: 400 }));
+    render(<SearchTable />);
+    await screen.findByTestId("search-result");
+
+    mockFetchOnce(response({ totalPages: 20, total: 400 }));
+    await user.click(screen.getByTestId("sort-total"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    mockFetchOnce(response({ totalPages: 20, total: 400, page: 2 }));
+    await user.click(screen.getByTestId("next-page"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const url = fetchMock.mock.calls[2][0] as string;
+    expect(url).toContain("page=2");
+    expect(url).not.toContain("cursorId");
+  });
+
   it("appends the sidebar filters to the request", async () => {
     mockFetchOnce(response());
     render(

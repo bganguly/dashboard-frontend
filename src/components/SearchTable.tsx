@@ -170,6 +170,53 @@ export default function SearchTable({
     onRowsRef.current = onRows;
   });
 
+  // Boundary rows of the currently-displayed page, for Prev/Next — a keyset
+  // (cursor) fetch seeks directly off one of these via the index regardless
+  // of how deep in the list the page is, unlike an OFFSET query whose cost
+  // scales with depth. Only meaningful for the default placedAt/desc sort,
+  // the one column with a dedicated index; any other sort clears it so
+  // Prev/Next fall back to the normal page/OFFSET fetch.
+  const cursorAnchorRef = useRef<{
+    page: number;
+    firstId: unknown;
+    firstPlacedAt: string;
+    lastId: unknown;
+    lastPlacedAt: string;
+  } | null>(null);
+  // Set right before a cursor-based Prev/Next also calls setPage(), so the
+  // page-change effect below doesn't immediately re-fetch the same page via
+  // OFFSET and throw away the fast result we just got.
+  const skipNextFetchRef = useRef(false);
+
+  const applyResponse = useCallback(
+    (json: SearchResponse, p: number, sortCol: string, sortDir: SortDir) => {
+      const data = Array.isArray(json.data) ? json.data : [];
+      setRows(data);
+      setTotalPages(Math.max(1, json.totalPages ?? 1));
+      setTotal(json.total ?? 0);
+      setApproximate(Boolean(json.approximate));
+      onRowsRef.current?.(data);
+      if (sortCol === "placedAt" && sortDir === "desc" && data.length > 0) {
+        const first = data[0] as { id?: unknown; placedAt?: unknown };
+        const last = data[data.length - 1] as { id?: unknown; placedAt?: unknown };
+        if (typeof first.placedAt === "string" && typeof last.placedAt === "string") {
+          cursorAnchorRef.current = {
+            page: p,
+            firstId: first.id,
+            firstPlacedAt: first.placedAt,
+            lastId: last.id,
+            lastPlacedAt: last.placedAt,
+          };
+        } else {
+          cursorAnchorRef.current = null;
+        }
+      } else {
+        cursorAnchorRef.current = null;
+      }
+    },
+    [],
+  );
+
   const fetchPage = useCallback(
     async (
       q: string,
@@ -202,12 +249,7 @@ export default function SearchTable({
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json: SearchResponse = await res.json();
-        const data = Array.isArray(json.data) ? json.data : [];
-        setRows(data);
-        setTotalPages(Math.max(1, json.totalPages ?? 1));
-        setTotal(json.total ?? 0);
-        setApproximate(Boolean(json.approximate));
-        onRowsRef.current?.(data);
+        applyResponse(json, p, sortCol, sortDir);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setError((err as Error).message);
@@ -215,6 +257,7 @@ export default function SearchTable({
         setTotalPages(1);
         setTotal(0);
         setApproximate(false);
+        cursorAnchorRef.current = null;
       } finally {
         if (abortRef.current === controller) {
           setLoading(false);
@@ -222,7 +265,63 @@ export default function SearchTable({
         }
       }
     },
-    [endpoint, pageSize],
+    [endpoint, pageSize, applyResponse],
+  );
+
+  // Prev/Next via keyset: seeks off the current page's boundary row instead
+  // of computing a page/OFFSET query. Falls back to the normal fetch (via
+  // the caller) when no anchor is available yet or the sort isn't the
+  // default — same shape as fetchPage otherwise, so the two stay in sync.
+  const fetchAdjacentByCursor = useCallback(
+    async (
+      q: string,
+      targetPage: number,
+      f: OrderFilters | undefined,
+      cursorId: unknown,
+      cursorPlacedAt: string,
+      direction: "next" | "prev",
+    ) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setLoading(true);
+      setSearchLoading(false);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          q,
+          page: String(targetPage),
+          pageSize: String(pageSize),
+          sort: "placedAt",
+          dir: "desc",
+          cursorId: String(cursorId),
+          cursorPlacedAt,
+          cursorDir: direction,
+        });
+        appendFilterParams(params, f);
+        const res = await fetch(`${endpoint}?${params}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json: SearchResponse = await res.json();
+        applyResponse(json, targetPage, "placedAt", "desc");
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        setError((err as Error).message);
+        setRows([]);
+        setTotalPages(1);
+        setTotal(0);
+        setApproximate(false);
+        cursorAnchorRef.current = null;
+      } finally {
+        if (abortRef.current === controller) {
+          setLoading(false);
+          setSearchLoading(false);
+        }
+      }
+    },
+    [endpoint, pageSize, applyResponse],
   );
 
   // Search commits on Enter, or immediately when the input is cleared (typing
@@ -272,6 +371,13 @@ export default function SearchTable({
   const lastFiltersKey = useRef<string>(JSON.stringify(filters ?? {}));
   const lastFetchedQuery = useRef(debouncedQuery);
   useEffect(() => {
+    // A cursor-based Prev/Next already fetched this page's data directly;
+    // the setPage() it made to update the displayed page number would
+    // otherwise re-trigger this effect and redo the fetch via plain OFFSET.
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
     const key = JSON.stringify(filters ?? {});
     if (key !== lastFiltersKey.current) {
       lastFiltersKey.current = key;
@@ -364,6 +470,32 @@ export default function SearchTable({
       setPage(clamped);
     },
     [totalPages],
+  );
+
+  // Prev/Next: use the keyset cursor from the currently-displayed page when
+  // it's available (default sort, non-empty page) so the fetch cost stays
+  // flat regardless of how deep the current page is; otherwise fall back to
+  // the normal page/OFFSET path (e.g. no anchor yet, or a non-default sort).
+  const goToAdjacentPage = useCallback(
+    (direction: "prev" | "next") => {
+      const targetPage = direction === "next" ? page + 1 : page - 1;
+      const clamped = Math.min(Math.max(targetPage, 1), totalPages);
+      if (clamped === page) return;
+
+      const anchor = cursorAnchorRef.current;
+      if (anchor && anchor.page === page) {
+        const cursorId = direction === "next" ? anchor.lastId : anchor.firstId;
+        const cursorPlacedAt = direction === "next" ? anchor.lastPlacedAt : anchor.firstPlacedAt;
+        if (cursorId != null) {
+          skipNextFetchRef.current = true;
+          setPage(clamped);
+          fetchAdjacentByCursor(debouncedQuery, clamped, filters, cursorId, cursorPlacedAt, direction);
+          return;
+        }
+      }
+      goToPage(clamped);
+    },
+    [page, totalPages, debouncedQuery, filters, fetchAdjacentByCursor, goToPage],
   );
 
   const pageItems = useMemo(
@@ -549,7 +681,7 @@ export default function SearchTable({
                 <button
                   type="button"
                   data-testid="prev-page"
-                  onClick={() => goToPage(page - 1)}
+                  onClick={() => goToAdjacentPage("prev")}
                   disabled={page <= 1 || (isControlled ? controlledLoading : loading)}
                   className="flex h-9 items-center rounded-md border border-gray-300 px-3 text-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
                 >
@@ -594,7 +726,7 @@ export default function SearchTable({
                 <button
                   type="button"
                   data-testid="next-page"
-                  onClick={() => goToPage(page + 1)}
+                  onClick={() => goToAdjacentPage("next")}
                   disabled={page >= totalPages || (isControlled ? controlledLoading : loading)}
                   className="flex h-9 items-center rounded-md border border-gray-300 px-3 text-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
                 >

@@ -71,6 +71,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   // totalOrders) — null until the first response lands, then preferred over
   // summing category rows (see summedCategoryOrders fallback below).
   const [exactTotal, setExactTotal] = useState<number | null>(null);
+  const [exactTotalApproximate, setExactTotalApproximate] = useState(false);
   const [range, setRange] = useState(defaultRange);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +103,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       const json = await res.json();
       setRawData(Array.isArray(json.data) ? json.data : []);
       setExactTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
+      setExactTotalApproximate(Boolean(json.totalOrdersApproximate));
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       lastRequestKeyRef.current = null; // allow a retry of the same params after a real failure
@@ -225,7 +227,9 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   })()}
                   <span data-testid="aggregate-tile-total" data-total={matchedOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
                     Total
-                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">{full(matchedOrders)}</span>
+                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
+                      {exactTotalApproximate ? `${full(matchedOrders)}+` : full(matchedOrders)}
+                    </span>
                   </span>
                 </div>
               )} />

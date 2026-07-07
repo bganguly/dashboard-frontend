@@ -175,4 +175,19 @@ describe("Chart", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("shows exact total without + suffix when totalOrdersApproximate is false", async () => {
+    mockFetchOnce({ data: [day("2026-01-01", { A: 1 })], totalOrders: 42, totalOrdersApproximate: false });
+    render(<Chart />);
+    const tile = await screen.findByTestId("aggregate-tile-total");
+    expect(tile.textContent).toContain("42");
+    expect(tile.textContent).not.toContain("+");
+  });
+
+  it("shows + suffix on total tile when totalOrdersApproximate is true", async () => {
+    mockFetchOnce({ data: [day("2026-01-01", { A: 1 })], totalOrders: 10000, totalOrdersApproximate: true });
+    render(<Chart />);
+    const tile = await screen.findByTestId("aggregate-tile-total");
+    expect(tile.textContent).toContain("10,000+");
+  });
 });

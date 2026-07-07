@@ -264,6 +264,8 @@ describe("SearchTable", () => {
 
   it("marks approximate totals with a plus", async () => {
     mockFetchOnce(response({ total: 1000, approximate: true }));
+    // Count-refine endpoint — let it fail gracefully so the approximate state persists.
+    fetchMock.mockRejectedValueOnce(new Error("network"));
     render(<SearchTable />);
 
     const total = await screen.findByTestId("search-total");

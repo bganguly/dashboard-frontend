@@ -3,4 +3,4 @@ config:
   gcp:region: us-central1
   dashboard-frontend:namePrefix: dash
   dashboard-frontend:backendUrl: https://dash-backend-7u2hpcwtmq-uc.a.run.app
-  dashboard-frontend:frontendImage: us-central1-docker.pkg.dev/bikram-springboot/bikram-springboot-gradle/frontend:d2b0516-20260707082129
+  dashboard-frontend:frontendImage: us-central1-docker.pkg.dev/bikram-springboot/bikram-springboot-gradle/frontend:93a9f3d-20260708082621

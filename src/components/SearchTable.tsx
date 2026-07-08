@@ -727,7 +727,15 @@ export default function SearchTable({
           results
         </span>
 
-        {totalPages > 1 && (
+        {externalTotal === null && totalPages > 1 ? (
+          <div className="flex items-center gap-1" aria-hidden>
+            <span className="h-9 w-14 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
+            <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
+            <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
+            <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
+            <span className="h-9 w-14 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
+          </div>
+        ) : totalPages > 1 ? (
           <nav aria-label="Pagination">
             <ul className="flex items-center gap-1">
               <li>
@@ -809,7 +817,7 @@ export default function SearchTable({
               </li>
             </ul>
           </nav>
-        )}
+        ) : null}
       </footer>
     </section>
   );

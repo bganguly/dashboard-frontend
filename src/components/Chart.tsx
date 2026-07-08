@@ -237,7 +237,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                       {overrideTotal != null
                         ? overrideTotal.toLocaleString()
                         : apiTotal === null || apiTotalApproximate
-                          ? "…"
+                          ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
                           : apiTotal.toLocaleString()}
                     </span>
                   </span>

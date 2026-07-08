@@ -711,17 +711,20 @@ export default function SearchTable({
 
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          Page {page} of {totalPages} ·{" "}
+          Page {page} of{" "}
+          {externalTotal === null
+            ? <span className="inline-block h-3 w-8 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
+            : totalPages}{" "}·{" "}
           <span data-testid="search-total" data-total={refinedTotal ?? externalTotal ?? total}>
             {(() => {
               if (refinedTotal !== null) return refinedTotal.toLocaleString();
               if (refiningCount)
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              if (externalTotal === undefined)
-                return approximate ? `${total.toLocaleString()}+` : total.toLocaleString();
               if (externalTotal === null)
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              return externalTotal.toLocaleString();
+              if (!approximate) return total.toLocaleString();
+              if (externalTotal !== undefined) return externalTotal.toLocaleString();
+              return `${total.toLocaleString()}+`;
             })()}
           </span>{" "}
           results

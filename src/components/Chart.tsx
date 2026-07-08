@@ -234,11 +234,9 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   <span data-testid="aggregate-tile-total" data-total={overrideTotal ?? apiTotal ?? summedCategoryOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
                     Total
                     <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
-                      {overrideTotal != null
-                        ? overrideTotal.toLocaleString()
-                        : apiTotal === null || apiTotalApproximate
-                          ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
-                          : apiTotal.toLocaleString()}
+                      {loading
+                        ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
+                        : (overrideTotal ?? apiTotal ?? summedCategoryOrders).toLocaleString()}
                     </span>
                   </span>
                 </div>

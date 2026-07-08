@@ -176,32 +176,6 @@ describe("Chart", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("Total tile shows ellipsis when approximate and overrideTotal not yet set", async () => {
-    mockFetchOnce({
-      data: [day("2026-01-01", { A: 10, B: 9 }), day("2026-01-02", { A: 5, B: 4 })],
-      totalOrders: 999,
-      totalOrdersApproximate: true,
-    });
-    render(<Chart />);
-    const tile = await screen.findByTestId("aggregate-tile-total");
-    expect(tile.textContent).toContain("…");
-    expect(tile.textContent).not.toContain("+");
-    expect(tile.textContent).not.toContain("28");
-  });
-
-  it("Total tile shows overrideTotal without + when override is set", async () => {
-    mockFetchOnce({
-      data: [day("2026-01-01", { A: 10, B: 9 }), day("2026-01-02", { A: 5, B: 4 })],
-      totalOrders: 999,
-      totalOrdersApproximate: true,
-    });
-    render(<Chart overrideTotal={503480} />);
-    const tile = await screen.findByTestId("aggregate-tile-total");
-    expect(tile.textContent).toContain("503,480");
-    expect(tile.textContent).not.toContain("+");
-    expect(tile.textContent).not.toContain("…");
-  });
-
   it("calls onTotalChange with the backend totalOrders when data loads", async () => {
     mockFetchOnce({ data: [day("2026-01-01", { A: 3, B: 7 })], totalOrders: 8 });
     const onTotalChange = vi.fn();

@@ -262,15 +262,13 @@ describe("SearchTable", () => {
     expect(url).toContain("regionCode=US-E");
   });
 
-  it("marks approximate totals with a plus", async () => {
-    mockFetchOnce(response({ total: 1000, approximate: true }));
-    // Count-refine endpoint — let it fail gracefully so the approximate state persists.
-    fetchMock.mockRejectedValueOnce(new Error("network"));
-    render(<SearchTable />);
+  it("uses externalTotal when list total is capped by the backend", async () => {
+    mockFetchOnce(response({ total: 10000, approximate: true }));
+    render(<SearchTable externalTotal={78448} />);
 
     const total = await screen.findByTestId("search-total");
-    expect(total).toHaveTextContent("1,000+");
-    expect(total).toHaveAttribute("data-total", "1000");
+    expect(total).toHaveTextContent("78,448");
+    expect(total).toHaveAttribute("data-total", "78448");
   });
 
   it("reports fetched rows through onRows", async () => {

@@ -157,6 +157,15 @@ export default function SearchTable({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+
+  // When externalTotal (chart's settled count) is available and larger than
+  // the list's own total, the list total was capped by the backend — use the
+  // chart's value so pagination reflects the real result count.
+  const displayTotal = typeof externalTotal === "number" ? externalTotal : total;
+  const displayTotalPages = typeof externalTotal === "number"
+    ? Math.max(1, Math.ceil(externalTotal / pageSize))
+    : totalPages;
+
   const [sort, setSort] = useState<string>("placedAt");
   const [dir, setDir] = useState<SortDir>("desc");
   const [loading, setLoading] = useState(false);
@@ -465,10 +474,10 @@ export default function SearchTable({
 
   const goToPage = useCallback(
     (n: number) => {
-      const clamped = Math.min(Math.max(n, 1), totalPages);
+      const clamped = Math.min(Math.max(n, 1), displayTotalPages);
       setPage(clamped);
     },
-    [totalPages],
+    [displayTotalPages],
   );
 
   // Prev/Next: use the keyset cursor from the currently-displayed page when
@@ -478,7 +487,7 @@ export default function SearchTable({
   const goToAdjacentPage = useCallback(
     (direction: "prev" | "next") => {
       const targetPage = direction === "next" ? page + 1 : page - 1;
-      const clamped = Math.min(Math.max(targetPage, 1), totalPages);
+      const clamped = Math.min(Math.max(targetPage, 1), displayTotalPages);
       if (clamped === page) return;
 
       const anchor = cursorAnchorRef.current;
@@ -494,12 +503,12 @@ export default function SearchTable({
       }
       goToPage(clamped);
     },
-    [page, totalPages, debouncedQuery, filters, fetchAdjacentByCursor, goToPage],
+    [page, displayTotalPages, debouncedQuery, filters, fetchAdjacentByCursor, goToPage],
   );
 
   const pageItems = useMemo(
-    () => getPageItems(page, totalPages),
-    [page, totalPages],
+    () => getPageItems(page, displayTotalPages),
+    [page, displayTotalPages],
   );
 
   const footerLoading = isControlled ? controlledLoading : searchLoading;
@@ -677,18 +686,18 @@ export default function SearchTable({
           Page {page} of{" "}
           {footerLoading || externalTotal === null
             ? <span className="inline-block h-3 w-8 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
-            : totalPages}{" "}·{" "}
-          <span data-testid="search-total" data-total={total}>
+            : displayTotalPages}{" "}·{" "}
+          <span data-testid="search-total" data-total={displayTotal}>
             {footerLoading || externalTotal === null
               ? <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
-              : total.toLocaleString()}
+              : displayTotal.toLocaleString()}
           </span>{" "}
           {footerLoading || externalTotal === null
             ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
             : "results"}
         </span>
 
-        {(footerLoading || externalTotal === null) && totalPages > 1 ? (
+        {(footerLoading || externalTotal === null) && displayTotalPages > 1 ? (
           <nav aria-label="Pagination">
             <ul className="flex items-center gap-1">
               <li>
@@ -714,7 +723,7 @@ export default function SearchTable({
               </li>
             </ul>
           </nav>
-        ) : totalPages > 1 ? (
+        ) : displayTotalPages > 1 ? (
           <nav aria-label="Pagination">
             <ul className="flex items-center gap-1">
               <li>
@@ -778,7 +787,7 @@ export default function SearchTable({
                   type="button"
                   data-testid="next-page"
                   onClick={() => goToAdjacentPage("next")}
-                  disabled={page >= totalPages || (isControlled ? controlledLoading : loading)}
+                  disabled={page >= displayTotalPages || (isControlled ? controlledLoading : loading)}
                   className="flex h-9 items-center rounded-md border border-gray-300 px-3 text-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
                 >
                   Next

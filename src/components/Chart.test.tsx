@@ -176,18 +176,25 @@ describe("Chart", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("shows exact total without + suffix when totalOrdersApproximate is false", async () => {
-    mockFetchOnce({ data: [day("2026-01-01", { A: 1 })], totalOrders: 42, totalOrdersApproximate: false });
+  it("Total tile shows the sum of all category orders across the date range", async () => {
+    // A: 10 + 5 = 15, B: 9 + 4 = 13, total = 28 (ignores backend totalOrders entirely)
+    mockFetchOnce({
+      data: [day("2026-01-01", { A: 10, B: 9 }), day("2026-01-02", { A: 5, B: 4 })],
+      totalOrders: 999,
+      totalOrdersApproximate: true,
+    });
     render(<Chart />);
     const tile = await screen.findByTestId("aggregate-tile-total");
-    expect(tile.textContent).toContain("42");
+    expect(tile.textContent).toContain("28");
+    expect(tile.textContent).not.toContain("999");
     expect(tile.textContent).not.toContain("+");
   });
 
-  it("shows + suffix on total tile when totalOrdersApproximate is true", async () => {
-    mockFetchOnce({ data: [day("2026-01-01", { A: 1 })], totalOrders: 10000, totalOrdersApproximate: true });
-    render(<Chart />);
-    const tile = await screen.findByTestId("aggregate-tile-total");
-    expect(tile.textContent).toContain("10,000+");
+  it("calls onTotalChange with the category sum when data loads", async () => {
+    mockFetchOnce({ data: [day("2026-01-01", { A: 3, B: 7 })] });
+    const onTotalChange = vi.fn();
+    render(<Chart onTotalChange={onTotalChange} />);
+    await screen.findByTestId("aggregate-tile-total");
+    expect(onTotalChange).toHaveBeenCalledWith(10);
   });
 });

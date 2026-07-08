@@ -47,6 +47,9 @@ interface SearchTableProps {
   controlledLoading?: boolean;
   controlledError?: string | null;
   onRequestStateChange?: (state: TableRequestState) => void;
+  /** Category-sum total from the chart. null = chart still loading (show skeleton).
+   *  undefined = not wired (falls back to the API total for backwards compat). */
+  externalTotal?: number | null;
 }
 
 function cn(...classes: (string | false | undefined)[]): string {
@@ -143,6 +146,7 @@ export default function SearchTable({
   controlledLoading = false,
   controlledError = null,
   onRequestStateChange,
+  externalTotal,
 }: SearchTableProps) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -264,8 +268,10 @@ export default function SearchTable({
             .then((r) => (r.ok ? r.json() : Promise.reject()))
             .then((data) => {
               if (countAbortRef.current !== countController) return;
-              setTotal(data.total);
-              setApproximate(false);
+              // Display total comes from the chart (externalTotal prop).
+              // This refine call exists only to get the real totalPages once
+              // the exact distinct-order count is known.
+              setTotalPages(Math.ceil(data.total / pageSize));
               setRefiningCount(false);
             })
             .catch(() => {
@@ -696,10 +702,12 @@ export default function SearchTable({
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Page {page} of {totalPages} ·{" "}
-          <span data-testid="search-total" data-total={total}>
-            {approximate
-              ? `${total.toLocaleString()}+${refiningCount ? "…" : ""}`
-              : total.toLocaleString()}
+          <span data-testid="search-total" data-total={externalTotal ?? total}>
+            {externalTotal === undefined
+              ? (approximate ? `${total.toLocaleString()}+${refiningCount ? "…" : ""}` : total.toLocaleString())
+              : externalTotal === null
+                ? <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
+                : externalTotal.toLocaleString()}
           </span>{" "}
           results
         </span>
@@ -737,6 +745,16 @@ export default function SearchTable({
                 // Prev/Next — route them through the same cursor path so
                 // clicking the number instead of the button doesn't fall
                 // back to a slow OFFSET query at depth.
+                // While the exact page count is being refined, replace the
+                // last-page button with a skeleton so we never show a number
+                // that might drop once the real count lands.
+                if (item === totalPages && refiningCount && !isActive) {
+                  return (
+                    <li key="last-page-skeleton" aria-hidden>
+                      <span className="flex h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
+                    </li>
+                  );
+                }
                 const handleClick =
                   item === page - 1
                     ? () => goToAdjacentPage("prev")

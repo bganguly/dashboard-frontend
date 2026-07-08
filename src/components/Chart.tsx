@@ -63,16 +63,12 @@ function compactBrushDate(value: string) {
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
 function defaultRange() { return { from: "2020-01-01", to: isoDay(new Date()) }; }
 
-interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; }
+interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; onTotalChange?: (n: number) => void; }
 
-export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange }: ChartProps) {
+export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange, onTotalChange }: ChartProps) {
   const [rawData, setRawData] = useState<RawAggregate[]>([]);
-  // Exact distinct order count from the backend (AggregateController's
-  // totalOrders) — null until the first response lands, then preferred over
-  // summing category rows (see summedCategoryOrders fallback below).
-  const [exactTotal, setExactTotal] = useState<number | null>(null);
-  const [exactTotalApproximate, setExactTotalApproximate] = useState(false);
   const [range, setRange] = useState(defaultRange);
+  const onTotalChangeRef = useRef(onTotalChange);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
@@ -102,8 +98,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setRawData(Array.isArray(json.data) ? json.data : []);
-      setExactTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
-      setExactTotalApproximate(Boolean(json.totalOrdersApproximate));
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       lastRequestKeyRef.current = null; // allow a retry of the same params after a real failure
@@ -127,20 +121,25 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
 
   useEffect(() => () => { abortRef.current?.abort(); if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
 
+  // Keep ref in sync so the effect below doesn't need onTotalChange as a dep.
+  useEffect(() => { onTotalChangeRef.current = onTotalChange; });
+
   const isDark = useIsDark();
   const gridStroke = isDark ? "#374151" : "#e5e7eb";
   const axisColor  = isDark ? "#9ca3af" : "#6b7280";
   const tooltipStyle = { backgroundColor: isDark ? "#1f2937" : "#fff", border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`, borderRadius: 8, color: isDark ? "#f3f4f6" : "#111827" };
 
-  // Fallback total when the backend didn't send totalOrders — summing
-  // per-category counts OVERCOUNTS any order whose items span more than one
-  // category, since each such category gets totalOrders=1 for that order.
-  // Only used when exactTotal is unavailable; prefer that instead.
+  // Sum of per-category order counts across the visible date range. One order
+  // whose items span N categories is counted N times (once per category), so
+  // this is always >= the distinct-order count, but it's instantly available
+  // from the same data the bars use and is always consistent with what's shown.
   const summedCategoryOrders = useMemo(
     () => rawData.reduce((sum, day) => sum + Object.values(day.categories ?? {}).reduce((s, c) => s + (c.totalOrders ?? 0), 0), 0),
     [rawData],
   );
-  const matchedOrders = exactTotal ?? summedCategoryOrders;
+  const matchedOrders = summedCategoryOrders;
+
+  useEffect(() => { onTotalChangeRef.current?.(summedCategoryOrders); }, [summedCategoryOrders]);
 
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
@@ -227,9 +226,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   })()}
                   <span data-testid="aggregate-tile-total" data-total={matchedOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
                     Total
-                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
-                      {exactTotalApproximate ? `${full(matchedOrders)}+` : full(matchedOrders)}
-                    </span>
+                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">{full(matchedOrders)}</span>
                   </span>
                 </div>
               )} />

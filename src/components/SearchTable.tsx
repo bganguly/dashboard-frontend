@@ -724,9 +724,8 @@ export default function SearchTable({
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
               if (footerLoading || externalTotal === null)
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              if (!approximate) return total.toLocaleString();
               if (externalTotal !== undefined) return externalTotal.toLocaleString();
-              return `${total.toLocaleString()}+`;
+              return total.toLocaleString();
             })()}
           </span>{" "}
           results

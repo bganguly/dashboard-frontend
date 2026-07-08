@@ -236,7 +236,10 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                     <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
                       {loading
                         ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
-                        : (overrideTotal ?? apiTotal ?? summedCategoryOrders).toLocaleString()}
+                        : (!apiTotalApproximate && apiTotal !== null
+                            ? apiTotal
+                            : overrideTotal ?? apiTotal ?? summedCategoryOrders
+                          ).toLocaleString()}
                     </span>
                   </span>
                 </div>

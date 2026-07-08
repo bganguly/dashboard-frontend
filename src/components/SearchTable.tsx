@@ -541,6 +541,8 @@ export default function SearchTable({
     [page, totalPages],
   );
 
+  const footerLoading = isControlled ? controlledLoading : searchLoading;
+
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="mb-4 flex items-center gap-3">
@@ -712,7 +714,7 @@ export default function SearchTable({
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Page {page} of{" "}
-          {externalTotal === null
+          {footerLoading || externalTotal === null
             ? <span className="inline-block h-3 w-8 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
             : totalPages}{" "}·{" "}
           <span data-testid="search-total" data-total={refinedTotal ?? externalTotal ?? total}>
@@ -720,7 +722,7 @@ export default function SearchTable({
               if (refinedTotal !== null) return refinedTotal.toLocaleString();
               if (refiningCount)
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              if (externalTotal === null)
+              if (footerLoading || externalTotal === null)
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
               if (!approximate) return total.toLocaleString();
               if (externalTotal !== undefined) return externalTotal.toLocaleString();
@@ -730,7 +732,7 @@ export default function SearchTable({
           results
         </span>
 
-        {externalTotal === null && totalPages > 1 ? (
+        {(footerLoading || externalTotal === null) && totalPages > 1 ? (
           <div className="flex items-center gap-1" aria-hidden>
             <span className="h-9 w-14 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
             <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />

@@ -25,13 +25,13 @@ export default function App() {
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_FILTERS);
   const [regionOptions, setRegionOptions] = useState<RegionOption[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  // Category-sum total from the chart — null while chart is (re)loading.
-  // Passed to SearchTable so both tiles always show the same number.
+  // Total from the chart's /api/aggregates response — null while (re)loading.
   const [chartTotal, setChartTotal] = useState<number | null>(null);
+  // Exact count from SearchTable's background /count refine — null until settled.
+  const [exactCount, setExactCount] = useState<number | null>(null);
 
-  // Reset whenever the filter/query changes so SearchTable shows a skeleton
-  // while the chart re-fetches instead of showing the previous query's total.
-  useEffect(() => { setChartTotal(null); }, [filters, searchQuery]);
+  // Reset both on every new search/filter so consumers show a skeleton.
+  useEffect(() => { setChartTotal(null); setExactCount(null); }, [filters, searchQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,8 +68,8 @@ export default function App() {
         <div className="flex flex-col gap-6 lg:flex-row">
           <FilterSidebar value={filters} onChange={setFilters} regionOptions={regionOptions} />
           <div className="min-w-0 flex-1 grid grid-cols-1 gap-6">
-            <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} />
-            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} />
+            <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} />
+            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} />
           </div>
         </div>
       </main>

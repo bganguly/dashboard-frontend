@@ -50,6 +50,8 @@ interface SearchTableProps {
   /** Category-sum total from the chart. null = chart still loading (show skeleton).
    *  undefined = not wired (falls back to the API total for backwards compat). */
   externalTotal?: number | null;
+  /** Called with the exact count once the background /count refine completes. */
+  onRefinedCount?: (total: number) => void;
 }
 
 function cn(...classes: (string | false | undefined)[]): string {
@@ -147,6 +149,7 @@ export default function SearchTable({
   controlledError = null,
   onRequestStateChange,
   externalTotal,
+  onRefinedCount,
 }: SearchTableProps) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -173,9 +176,10 @@ export default function SearchTable({
 
   // Latest onRows without making it a fetch dependency.
   const onRowsRef = useRef(onRows);
-  useEffect(() => {
-    onRowsRef.current = onRows;
-  });
+  useEffect(() => { onRowsRef.current = onRows; });
+
+  const onRefinedCountRef = useRef(onRefinedCount);
+  useEffect(() => { onRefinedCountRef.current = onRefinedCount; });
 
   // Boundary rows of the currently-displayed page, for Prev/Next — a keyset
   // (cursor) fetch seeks directly off one of these via the index regardless
@@ -271,6 +275,7 @@ export default function SearchTable({
             .then((data) => {
               if (countAbortRef.current !== countController) return;
               setRefinedTotal(data.total);
+              onRefinedCountRef.current?.(data.total);
               setTotalPages(Math.ceil(data.total / pageSize));
               setRefiningCount(false);
             })
@@ -709,12 +714,14 @@ export default function SearchTable({
           Page {page} of {totalPages} ·{" "}
           <span data-testid="search-total" data-total={refinedTotal ?? externalTotal ?? total}>
             {(() => {
-              const disp = refinedTotal ?? externalTotal;
-              if (disp === undefined)
-                return approximate ? `${total.toLocaleString()}+${refiningCount ? "…" : ""}` : total.toLocaleString();
-              if (disp === null)
+              if (refinedTotal !== null) return refinedTotal.toLocaleString();
+              if (refiningCount)
                 return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              return disp.toLocaleString() + (refiningCount ? "…" : "");
+              if (externalTotal === undefined)
+                return approximate ? `${total.toLocaleString()}+` : total.toLocaleString();
+              if (externalTotal === null)
+                return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
+              return externalTotal.toLocaleString();
             })()}
           </span>{" "}
           results

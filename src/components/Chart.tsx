@@ -63,9 +63,9 @@ function compactBrushDate(value: string) {
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
 function defaultRange() { return { from: "2020-01-01", to: isoDay(new Date()) }; }
 
-interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; onTotalChange?: (n: number) => void; }
+interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; onTotalChange?: (n: number) => void; overrideTotal?: number | null; }
 
-export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange, onTotalChange }: ChartProps) {
+export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange, onTotalChange, overrideTotal }: ChartProps) {
   const [rawData, setRawData] = useState<RawAggregate[]>([]);
   const [range, setRange] = useState(defaultRange);
   const onTotalChangeRef = useRef(onTotalChange);
@@ -144,8 +144,9 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const matchedOrders = apiTotal ?? summedCategoryOrders;
 
   useEffect(() => {
-    if (apiTotal !== null) onTotalChangeRef.current?.(apiTotal);
-  }, [apiTotal]);
+    const n = overrideTotal ?? apiTotal;
+    if (n != null) onTotalChangeRef.current?.(n);
+  }, [overrideTotal, apiTotal]);
 
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
@@ -230,10 +231,14 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                       </label>
                     );
                   })()}
-                  <span data-testid="aggregate-tile-total" data-total={apiTotal ?? summedCategoryOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
+                  <span data-testid="aggregate-tile-total" data-total={overrideTotal ?? apiTotal ?? summedCategoryOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
                     Total
                     <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
-                      {apiTotal === null ? "…" : apiTotal.toLocaleString() + (apiTotalApproximate ? "+" : "")}
+                      {overrideTotal != null
+                        ? overrideTotal.toLocaleString()
+                        : apiTotal === null || apiTotalApproximate
+                          ? "…"
+                          : apiTotal.toLocaleString()}
                     </span>
                   </span>
                 </div>

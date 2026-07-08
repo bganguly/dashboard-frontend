@@ -74,6 +74,8 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const [showOthers, setShowOthers] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [apiTotal, setApiTotal] = useState<number | null>(null);
+  const [apiTotalApproximate, setApiTotalApproximate] = useState(false);
   // A brush drag calls fetchAggregates directly, then (via onRangeChange)
   // updates the parent's filters — which changes filters?.from/to and
   // re-fires the effect below with the exact same resulting request. Track
@@ -92,12 +94,14 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
 
     abortRef.current?.abort();
     const ctrl = new AbortController(); abortRef.current = ctrl;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setApiTotal(null);
     try {
       const res = await fetch(`${endpoint}?${params}`, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setRawData(Array.isArray(json.data) ? json.data : []);
+      setApiTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
+      setApiTotalApproximate(Boolean(json.totalOrdersApproximate));
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       lastRequestKeyRef.current = null; // allow a retry of the same params after a real failure
@@ -137,9 +141,11 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     () => rawData.reduce((sum, day) => sum + Object.values(day.categories ?? {}).reduce((s, c) => s + (c.totalOrders ?? 0), 0), 0),
     [rawData],
   );
-  const matchedOrders = summedCategoryOrders;
+  const matchedOrders = apiTotal ?? summedCategoryOrders;
 
-  useEffect(() => { onTotalChangeRef.current?.(summedCategoryOrders); }, [summedCategoryOrders]);
+  useEffect(() => {
+    if (apiTotal !== null) onTotalChangeRef.current?.(apiTotal);
+  }, [apiTotal]);
 
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
@@ -224,9 +230,11 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                       </label>
                     );
                   })()}
-                  <span data-testid="aggregate-tile-total" data-total={matchedOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
+                  <span data-testid="aggregate-tile-total" data-total={apiTotal ?? summedCategoryOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
                     Total
-                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">{full(matchedOrders)}</span>
+                    <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
+                      {apiTotal === null ? "…" : apiTotal.toLocaleString() + (apiTotalApproximate ? "+" : "")}
+                    </span>
                   </span>
                 </div>
               )} />

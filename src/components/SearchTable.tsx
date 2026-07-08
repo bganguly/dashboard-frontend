@@ -156,6 +156,7 @@ export default function SearchTable({
   const [total, setTotal] = useState(0);
   const [approximate, setApproximate] = useState(false);
   const [refiningCount, setRefiningCount] = useState(false);
+  const [refinedTotal, setRefinedTotal] = useState<number | null>(null);
   const countAbortRef = useRef<AbortController | null>(null);
   const [sort, setSort] = useState<string>("placedAt");
   const [dir, setDir] = useState<SortDir>("desc");
@@ -235,6 +236,7 @@ export default function SearchTable({
       abortRef.current?.abort();
       countAbortRef.current?.abort();
       setRefiningCount(false);
+      setRefinedTotal(null);
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -268,14 +270,15 @@ export default function SearchTable({
             .then((r) => (r.ok ? r.json() : Promise.reject()))
             .then((data) => {
               if (countAbortRef.current !== countController) return;
-              // Display total comes from the chart (externalTotal prop).
-              // This refine call exists only to get the real totalPages once
-              // the exact distinct-order count is known.
+              setRefinedTotal(data.total);
               setTotalPages(Math.ceil(data.total / pageSize));
               setRefiningCount(false);
             })
-            .catch(() => {
-              if (countAbortRef.current === countController) setRefiningCount(false);
+            .catch((err) => {
+              if (countAbortRef.current === countController) {
+                console.warn("[SearchTable] /count refine failed:", err);
+                setRefiningCount(false);
+              }
             });
         }
       } catch (err) {
@@ -285,6 +288,7 @@ export default function SearchTable({
         setTotalPages(1);
         setTotal(0);
         setApproximate(false);
+        setRefinedTotal(null);
         cursorAnchorRef.current = null;
       } finally {
         if (abortRef.current === controller) {
@@ -390,6 +394,7 @@ export default function SearchTable({
     setTotalPages(1);
     setTotal(0);
     setApproximate(false);
+    setRefinedTotal(null);
   }, [controlledError, isControlled]);
 
   // Single source of truth for fetching: reacts to query, page, sort, filters,
@@ -702,12 +707,15 @@ export default function SearchTable({
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Page {page} of {totalPages} ·{" "}
-          <span data-testid="search-total" data-total={externalTotal ?? total}>
-            {externalTotal === undefined
-              ? (approximate ? `${total.toLocaleString()}+${refiningCount ? "…" : ""}` : total.toLocaleString())
-              : externalTotal === null
-                ? <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
-                : externalTotal.toLocaleString()}
+          <span data-testid="search-total" data-total={refinedTotal ?? externalTotal ?? total}>
+            {(() => {
+              const disp = refinedTotal ?? externalTotal;
+              if (disp === undefined)
+                return approximate ? `${total.toLocaleString()}+${refiningCount ? "…" : ""}` : total.toLocaleString();
+              if (disp === null)
+                return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
+              return disp.toLocaleString() + (refiningCount ? "…" : "");
+            })()}
           </span>{" "}
           results
         </span>

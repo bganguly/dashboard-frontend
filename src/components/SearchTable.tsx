@@ -730,7 +730,9 @@ export default function SearchTable({
               return total.toLocaleString();
             })()}
           </span>{" "}
-          results
+          {footerLoading || externalTotal === null
+            ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
+            : "results"}
         </span>
 
         {(footerLoading || externalTotal === null) && totalPages > 1 ? (

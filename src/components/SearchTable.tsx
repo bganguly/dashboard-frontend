@@ -264,7 +264,9 @@ export default function SearchTable({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json: SearchResponse = await res.json();
         applyResponse(json, p, sortCol, sortDir);
-        if (json.approximate) {
+        if (!json.approximate) {
+          onRefinedCountRef.current?.(json.total ?? 0);
+        } else {
           const countController = new AbortController();
           countAbortRef.current = countController;
           setRefiningCount(true);
@@ -732,13 +734,31 @@ export default function SearchTable({
         </span>
 
         {(footerLoading || externalTotal === null) && totalPages > 1 ? (
-          <div className="flex items-center gap-1" aria-hidden>
-            <span className="h-9 w-14 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
-            <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
-            <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
-            <span className="h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
-            <span className="h-9 w-14 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
-          </div>
+          <nav aria-label="Pagination">
+            <ul className="flex items-center gap-1">
+              <li>
+                <button type="button" disabled
+                  className="flex h-9 items-center rounded-md border border-gray-300 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700">
+                  Prev
+                </button>
+              </li>
+              <li>
+                <button type="button" aria-current="page"
+                  className="flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm bg-indigo-600 text-white">
+                  {page}
+                </button>
+              </li>
+              <li aria-hidden className="px-1">
+                <span className="inline-block h-3 w-24 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
+              </li>
+              <li>
+                <button type="button" disabled
+                  className="flex h-9 items-center rounded-md border border-gray-300 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700">
+                  Next
+                </button>
+              </li>
+            </ul>
+          </nav>
         ) : totalPages > 1 ? (
           <nav aria-label="Pagination">
             <ul className="flex items-center gap-1">

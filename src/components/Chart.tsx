@@ -75,7 +75,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const abortRef = useRef<AbortController | null>(null);
   const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [apiTotal, setApiTotal] = useState<number | null>(null);
-  const [apiTotalApproximate, setApiTotalApproximate] = useState(false);
   // A brush drag calls fetchAggregates directly, then (via onRangeChange)
   // updates the parent's filters — which changes filters?.from/to and
   // re-fires the effect below with the exact same resulting request. Track
@@ -101,7 +100,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       const json = await res.json();
       setRawData(Array.isArray(json.data) ? json.data : []);
       setApiTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
-      setApiTotalApproximate(Boolean(json.totalOrdersApproximate));
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       lastRequestKeyRef.current = null; // allow a retry of the same params after a real failure
@@ -144,9 +142,8 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const matchedOrders = apiTotal ?? summedCategoryOrders;
 
   useEffect(() => {
-    const n = overrideTotal ?? apiTotal;
-    if (n != null) onTotalChangeRef.current?.(n);
-  }, [overrideTotal, apiTotal]);
+    if (apiTotal != null) onTotalChangeRef.current?.(apiTotal);
+  }, [apiTotal]);
 
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
@@ -231,15 +228,12 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                       </label>
                     );
                   })()}
-                  <span data-testid="aggregate-tile-total" data-total={overrideTotal ?? apiTotal ?? summedCategoryOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
+                  <span data-testid="aggregate-tile-total" data-total={apiTotal ?? summedCategoryOrders} className="inline-flex items-center gap-1.5 whitespace-nowrap border-l border-gray-200 pl-4 font-medium dark:border-gray-700" style={{ color: axisColor }}>
                     Total
                     <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
                       {loading
                         ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
-                        : (!apiTotalApproximate && apiTotal !== null
-                            ? apiTotal
-                            : overrideTotal ?? apiTotal ?? summedCategoryOrders
-                          ).toLocaleString()}
+                        : (apiTotal ?? summedCategoryOrders).toLocaleString()}
                     </span>
                   </span>
                 </div>

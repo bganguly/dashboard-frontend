@@ -157,10 +157,6 @@ export default function SearchTable({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [approximate, setApproximate] = useState(false);
-  const [refiningCount, setRefiningCount] = useState(false);
-  const [refinedTotal, setRefinedTotal] = useState<number | null>(null);
-  const countAbortRef = useRef<AbortController | null>(null);
   const [sort, setSort] = useState<string>("placedAt");
   const [dir, setDir] = useState<SortDir>("desc");
   const [loading, setLoading] = useState(false);
@@ -177,9 +173,6 @@ export default function SearchTable({
   // Latest onRows without making it a fetch dependency.
   const onRowsRef = useRef(onRows);
   useEffect(() => { onRowsRef.current = onRows; });
-
-  const onRefinedCountRef = useRef(onRefinedCount);
-  useEffect(() => { onRefinedCountRef.current = onRefinedCount; });
 
   // Boundary rows of the currently-displayed page, for Prev/Next — a keyset
   // (cursor) fetch seeks directly off one of these via the index regardless
@@ -205,7 +198,6 @@ export default function SearchTable({
       setRows(data);
       setTotalPages(Math.max(1, json.totalPages ?? 1));
       setTotal(json.total ?? 0);
-      setApproximate(Boolean(json.approximate));
       onRowsRef.current?.(data);
       if (sortCol === "placedAt" && sortDir === "desc" && data.length > 0) {
         const first = data[0] as { id?: unknown; placedAt?: unknown };
@@ -238,9 +230,6 @@ export default function SearchTable({
       showSearchIndicator: boolean,
     ) => {
       abortRef.current?.abort();
-      countAbortRef.current?.abort();
-      setRefiningCount(false);
-      setRefinedTotal(null);
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -264,38 +253,12 @@ export default function SearchTable({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json: SearchResponse = await res.json();
         applyResponse(json, p, sortCol, sortDir);
-        if (!json.approximate) {
-          onRefinedCountRef.current?.(json.total ?? 0);
-        } else {
-          const countController = new AbortController();
-          countAbortRef.current = countController;
-          setRefiningCount(true);
-          const countParams = new URLSearchParams({ q });
-          appendFilterParams(countParams, f);
-          fetch(`${endpoint}/count?${countParams}`, { signal: countController.signal })
-            .then((r) => (r.ok ? r.json() : Promise.reject()))
-            .then((data) => {
-              if (countAbortRef.current !== countController) return;
-              setRefinedTotal(data.total);
-              onRefinedCountRef.current?.(data.total);
-              setTotalPages(Math.ceil(data.total / pageSize));
-              setRefiningCount(false);
-            })
-            .catch((err) => {
-              if (countAbortRef.current === countController) {
-                console.warn("[SearchTable] /count refine failed:", err);
-                setRefiningCount(false);
-              }
-            });
-        }
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setError((err as Error).message);
         setRows([]);
         setTotalPages(1);
         setTotal(0);
-        setApproximate(false);
-        setRefinedTotal(null);
         cursorAnchorRef.current = null;
       } finally {
         if (abortRef.current === controller) {
@@ -351,7 +314,6 @@ export default function SearchTable({
         setRows([]);
         setTotalPages(1);
         setTotal(0);
-        setApproximate(false);
         cursorAnchorRef.current = null;
       } finally {
         if (abortRef.current === controller) {
@@ -386,7 +348,6 @@ export default function SearchTable({
     setRows(data);
     setTotalPages(Math.max(1, controlledResponse.totalPages ?? 1));
     setTotal(controlledResponse.total ?? 0);
-    setApproximate(Boolean(controlledResponse.approximate));
     setError(null);
     onRowsRef.current?.(data);
   }, [controlledResponse, isControlled]);
@@ -400,8 +361,6 @@ export default function SearchTable({
     setRows([]);
     setTotalPages(1);
     setTotal(0);
-    setApproximate(false);
-    setRefinedTotal(null);
   }, [controlledError, isControlled]);
 
   // Single source of truth for fetching: reacts to query, page, sort, filters,
@@ -719,16 +678,10 @@ export default function SearchTable({
           {footerLoading || externalTotal === null
             ? <span className="inline-block h-3 w-8 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
             : totalPages}{" "}·{" "}
-          <span data-testid="search-total" data-total={refinedTotal ?? externalTotal ?? total}>
-            {(() => {
-              if (refinedTotal !== null) return refinedTotal.toLocaleString();
-              if (refiningCount)
-                return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              if (footerLoading || externalTotal === null)
-                return <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />;
-              if (externalTotal !== undefined) return externalTotal.toLocaleString();
-              return total.toLocaleString();
-            })()}
+          <span data-testid="search-total" data-total={total}>
+            {footerLoading || externalTotal === null
+              ? <span className="inline-block h-3 w-14 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
+              : total.toLocaleString()}
           </span>{" "}
           {footerLoading || externalTotal === null
             ? <span className="inline-block h-3 w-10 animate-pulse rounded bg-gray-200 align-middle dark:bg-gray-700" />
@@ -794,16 +747,6 @@ export default function SearchTable({
                 // Prev/Next — route them through the same cursor path so
                 // clicking the number instead of the button doesn't fall
                 // back to a slow OFFSET query at depth.
-                // While the exact page count is being refined, replace the
-                // last-page button with a skeleton so we never show a number
-                // that might drop once the real count lands.
-                if (item === totalPages && refiningCount && !isActive) {
-                  return (
-                    <li key="last-page-skeleton" aria-hidden>
-                      <span className="flex h-9 w-9 animate-pulse rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800" />
-                    </li>
-                  );
-                }
                 const handleClick =
                   item === page - 1
                     ? () => goToAdjacentPage("prev")

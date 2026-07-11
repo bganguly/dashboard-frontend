@@ -121,7 +121,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchAggregates, filters?.from, filters?.to]);
 
-  useEffect(() => () => { abortRef.current?.abort(); if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
+  useEffect(() => () => { abortRef.current?.abort(); lastRequestKeyRef.current = null; if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
 
   // Keep ref in sync so the effect below doesn't need onTotalChange as a dep.
   useEffect(() => { onTotalChangeRef.current = onTotalChange; });

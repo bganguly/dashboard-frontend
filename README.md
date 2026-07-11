@@ -5,7 +5,7 @@ search and chart responses across 4 million orders. Served via multi-stage Docke
 deployed as a GCP Cloud Run service managed by **Pulumi TypeScript IaC**. Nginx acts as a BFF proxy —
 routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
-Sister repo: [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend)
+Sister repo: [springboot-dashboard-backend-gcp](https://github.com/bganguly/springboot-dashboard-backend-gcp)
 
 ---
 
@@ -44,44 +44,22 @@ Browser ──HTTPS──► Nginx / Cloud Run ──proxy /api/* (SNI)──►
 
 ---
 
-## Local Dev
+## Running
 
-**Step 1** — start the backend first (from [springboot-gcp-dashboard-backend](https://github.com/bganguly/springboot-gcp-dashboard-backend)):
+Both scripts prompt for **[1] Local** or **[2] Remote (GCP)** on launch.
 
-```bash
-./scripts/local-dev.sh
-```
+| Action | Script | Prompt | Notes |
+|---|---|---|---|
+| Start local dev server | `./scripts/deploy.sh` | `[1]` | Start backend first (`springboot-dashboard-backend-gcp`) |
+| Deploy to GCP (Cloud Run or GKE) | `./scripts/deploy.sh` | `[2]` | Backend must be deployed first |
+| Stop local dev server | `./scripts/infra-down.sh` | `[1]` | Kills port 3006 |
+| Teardown GCP frontend | `./scripts/infra-down.sh` | `[2]` | Pulumi destroy on frontend stack |
 
-**Step 2** — start the frontend:
+Local: `BACKEND_URL=http://other-host:8080 ./scripts/deploy.sh` to override the backend target. Node 20+ required.
 
-```bash
-npm install && npm run dev
-```
+> **GCP cost:** The frontend Cloud Run service scales to zero — no idle cost. Cloud SQL and backend min-instance in [springboot-dashboard-backend-gcp](https://github.com/bganguly/springboot-dashboard-backend-gcp) bill continuously; run teardown there when not actively demoing.
 
-Opens http://localhost:3006. Node 18+ required.
-
-Override the proxy target if the backend runs elsewhere:
-
-```bash
-BACKEND_URL=http://other-host:8080 npm run dev
-```
-
----
-
-## Deploy (GCP Cloud Run via Pulumi)
-
-```bash
-./scripts/deploy.sh
-```
-
-1. Reads GCP project and region from `gcloud` config (falls back to `.env.gcp` in the backend repo)
-2. Builds and tags the Docker image (`<region>-docker.pkg.dev/<project>/dash-repo/frontend:<git-sha>`)
-3. Pushes to GCP Artifact Registry
-4. Runs `pulumi config set frontendImage <image>` in `springboot-gcp-dashboard-backend/infra/`
-5. Runs `pulumi up --yes` — creates or updates the `dash-frontend` Cloud Run service
-6. Prints the `frontendUrl` Pulumi stack output
-
-All infra state is tracked in the Pulumi stack — no manual `gcloud run deploy` commands.
+> **GCP availability:** The live GCP endpoint is not guaranteed to be running at all times. Use local mode to explore without incurring cloud costs.
 
 ---
 
@@ -91,38 +69,14 @@ All infra state is tracked in the Pulumi stack — no manual `gcloud run deploy`
 |---|---|
 | **Frontend** | https://dash-frontend-7u2hpcwtmq-uc.a.run.app |
 
-### Quick test — local (via Vite dev-server proxy)
-
 ```bash
+# local (via Vite dev-server proxy)
 curl "http://localhost:3006/api/orders?page=1&size=3" | jq .total
-curl "http://localhost:3006/api/orders?q=ava+ito&page=1&size=3" | jq '.data[].customer'
-curl "http://localhost:3006/api/aggregates?from=2024-01-01&to=2024-12-31" | jq 'length'
-```
 
-### Quick test — deployed (via Nginx proxy)
-
-```bash
+# GCP (if deployed, via Nginx proxy)
 BASE=https://dash-frontend-7u2hpcwtmq-uc.a.run.app
-curl -I "$BASE"                                                    # React SPA — expect 200 text/html
-curl "$BASE/api/orders?page=1&size=3" | jq .total                 # proxied to Spring Boot
-curl "$BASE/api/orders?q=ava+ito&page=1&size=3" | jq '.data[].customer'
-curl "$BASE/api/aggregates?from=2024-01-01&to=2024-12-31" | jq 'length'
-```
-
----
-
-## Tear Down
-
-> **FYI:** The frontend Cloud Run service scales to zero — no idle compute cost. However, Cloud SQL, the VPC connector, and the backend Cloud Run service (min 1 instance) all bill continuously. Full teardown must be run from the backend repo.
-
-The frontend has its own Pulumi stack (`dashboard-frontend/infra/`). Tear down independently:
-
-```bash
-# frontend only (Cloud Run service — no cost when scaled to zero anyway)
-cd infra && pulumi destroy --yes
-
-# full backend teardown (Cloud SQL, VPC, Secret Manager, Artifact Registry)
-./scripts/infra-down.sh   # from springboot-gcp-dashboard-backend
+curl -I "$BASE"
+curl "$BASE/api/orders?page=1&size=3" | jq .total
 ```
 
 ---

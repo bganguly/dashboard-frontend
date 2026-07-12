@@ -4,18 +4,72 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="$ROOT_DIR/infra"
 BACKEND_INFRA_DIR="$(cd "$ROOT_DIR/../springboot-dashboard-backend-gcp/infra" 2>/dev/null && pwd || true)"
-ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend-gcp/.env.gcp"
+ENV_FILE=""
 cd "$ROOT_DIR"
 
-printf '\n=== dashboard-frontend-gcp ===\n'
-printf '  [1] Local  — start local dev server (default)\n'
-printf '  [2] Remote — deploy to GCP (Cloud Run or GKE)\n'
-printf '\nChoice [1/2]: '
+_pulumi_stack_count() {
+  local stack="$1"
+  ( cd "$INFRA_DIR" 2>/dev/null && \
+    pulumi stack ls --json 2>/dev/null | python3 -c "
+import json,sys
+try:
+    data=json.load(sys.stdin)
+    for s in data:
+        if s.get('name')=='$stack':
+            print(s.get('resourceCount',0))
+            sys.exit(0)
+    print(0)
+except Exception:
+    print(0)
+" 2>/dev/null ) || printf '0'
+}
+_local_running=0
+_lite_count=0
+_full_count=0
+lsof -ti:3006 >/dev/null 2>&1 && _local_running=1 || true
+if command -v pulumi >/dev/null 2>&1 && pulumi whoami >/dev/null 2>&1; then
+  _lite_count=$(_pulumi_stack_count lite)
+  _full_count=$(_pulumi_stack_count full)
+fi
+
+printf '\n=== dashboard-frontend-gcp ===\n\n'
+printf '  [1] Local  — Vite dev server on localhost (no GCP cost)'
+(( _local_running )) && printf ' [running]' || printf ' [not detected]'
+printf '\n'
+printf '  [2] Lite   — GCP: Cloud Run (scales to zero, cold starts OK)'
+(( _lite_count > 0 )) && printf ' [%s resources active]' "$_lite_count" || printf ' [not deployed]'
+printf '\n'
+printf '  [3] Full   — GCP: Cloud Run (min 1 instance, always warm)'
+(( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
+printf '               Full also unlocks GKE deployment.\n'
+printf '\nChoice [1/2/3]: '
 read -r _MODE
 case "$_MODE" in
-  2) _TARGET="remote" ;;
-  *) _TARGET="local" ;;
+  2) _TARGET="remote"; DEPLOY_MODE="lite" ;;
+  3) _TARGET="remote"; DEPLOY_MODE="full" ;;
+  *) _TARGET="local";  DEPLOY_MODE=""    ;;
 esac
+
+if [[ "$_TARGET" == "remote" ]]; then
+  ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend-gcp/.env.gcp.${DEPLOY_MODE}"
+  FRONTEND_ENV_FILE="$ROOT_DIR/.env.gcp.${DEPLOY_MODE}"
+  [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
+
+  if [[ "$DEPLOY_MODE" == "lite" ]]; then
+    printf '\n--- Lite GCP summary ---\n'
+    printf '  Cloud Run:  min=0 instances (cold starts ~3s), max=1, 1 CPU / 256 Mi\n'
+    printf '  GKE:        skipped\n'
+    printf '  Cost est:   ~$5-10/mo if left running\n'
+  else
+    printf '\n--- Full GCP summary ---\n'
+    printf '  Cloud Run:  min=1 instance (always warm), max=3, 1 CPU / 512 Mi\n'
+    printf '  GKE:        available (you will be prompted)\n'
+    printf '  Cost est:   ~$20-40/mo if left running\n'
+  fi
+  printf '\nProceed? [Y/n] '
+  read -r _CONFIRM
+  [[ -z "$_CONFIRM" || "$_CONFIRM" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LOCAL
@@ -64,8 +118,6 @@ if [[ -z "$ACTIVE_ACCOUNT" ]]; then
 fi
 printf '\nAuthenticated as: %s\n' "$ACTIVE_ACCOUNT"
 
-[[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
-
 printf '\n=== deployment config ===\n'
 
 _CONFIG_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
@@ -75,21 +127,41 @@ GCP_PROJECT="${_CONFIG_PROJECT:-${GCP_PROJECT:-}}"
 _CONFIG_REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
 GCP_REGION="${_CONFIG_REGION:-${GCP_REGION:-us-central1}}"
 
-_GIT_HASH=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)
-_BUILD_TS=$(date +%Y%m%d%H%M%S)
-TAG="${_GIT_HASH:+${_GIT_HASH}-}${_BUILD_TS}"
+_shasum() { shasum -a 256 "$@" 2>/dev/null || sha256sum "$@" 2>/dev/null; }
+TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
+    "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
+    -type f 2>/dev/null | sort | xargs cat 2>/dev/null \
+  | _shasum | cut -c1-16 || true)
+TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
 
 printf '  Project: %s\n  Region:  %s\n' "$GCP_PROJECT" "$GCP_REGION"
 
-printf '\n=== STOPPED ===================================================\n'
-printf '  Deploy to GKE (Kubernetes)?  Y = GKE  /  n = Cloud Run\n'
-printf '===============================================================\n'
-read -r -p "Deploy to GKE? [Y/n]: " _CHOICE
-case "$_CHOICE" in
-  [nN]*) DEPLOY_TARGET="cloudrun" ;;
-  *)     DEPLOY_TARGET="gke" ;;
-esac
-printf '\n  Target: %s\n' "$DEPLOY_TARGET"
+if [[ "$DEPLOY_MODE" == "lite" ]]; then
+  DEPLOY_TARGET="cloudrun"
+  printf '\n  [lite] Skipping GKE — deploying to Cloud Run.\n'
+else
+  _GKE_EXISTS=$(gcloud container clusters describe "${GKE_CLUSTER:-dash-gke-cluster}" \
+    --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
+  _CR_EXISTS=$(gcloud run services describe dash-frontend \
+    --region "$GCP_REGION" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
+  if [[ -n "$_GKE_EXISTS" ]]; then
+    DEPLOY_TARGET="gke"
+    printf '\n  GKE cluster detected — redeploying to GKE.\n'
+  elif [[ -n "$_CR_EXISTS" ]]; then
+    DEPLOY_TARGET="cloudrun"
+    printf '\n  Cloud Run service detected — redeploying to Cloud Run.\n'
+  else
+    printf '\n=== STOPPED ===================================================\n'
+    printf '  Deploy to GKE (Kubernetes)?  Y = GKE  /  n = Cloud Run\n'
+    printf '===============================================================\n'
+    read -r -p "Deploy to GKE? [Y/n]: " _CHOICE
+    case "$_CHOICE" in
+      [nN]*) DEPLOY_TARGET="cloudrun" ;;
+      *)     DEPLOY_TARGET="gke" ;;
+    esac
+    printf '\n  Target: %s\n' "$DEPLOY_TARGET"
+  fi
+fi
 
 GKE_CLUSTER="${GKE_CLUSTER:-dash-gke-cluster}"
 K8S_NAMESPACE="dash"
@@ -113,6 +185,7 @@ else
   printf '\n  Resolving backend URL from Pulumi stack...\n'
   if [[ -n "$BACKEND_INFRA_DIR" && -d "$BACKEND_INFRA_DIR" ]] && command -v pulumi >/dev/null 2>&1; then
     BACKEND_URL=$(cd "$BACKEND_INFRA_DIR" && \
+      pulumi stack select "$DEPLOY_MODE" 2>/dev/null && \
       pulumi stack output backendUrl 2>/dev/null || true)
   fi
 fi
@@ -150,7 +223,50 @@ if ! gcloud artifacts repositories describe "$REGISTRY" \
 fi
 
 IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend:${TAG}"
-printf '\nBuilding and pushing:\n  %s\n' "$IMAGE"
+
+_IMG_EXISTS=$(gcloud artifacts docker tags list \
+  "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend" \
+  --filter="tag=${TAG}" \
+  --format="value(tag)" \
+  --project "$GCP_PROJECT" 2>/dev/null | head -1 || true)
+
+if [[ -n "$_IMG_EXISTS" ]]; then
+  printf '\n  Image %s already exists — skipping build.\n' "$IMAGE"
+else
+  printf '\nBuilding and pushing:\n  %s\n' "$IMAGE"
+
+_cloudbuild_submit() {
+  local tag="$1" project="$2" srcdir="$3"
+  gcloud services enable cloudbuild.googleapis.com --project "$project"
+
+  _CB_ROLE=$(gcloud projects get-iam-policy "$project" \
+    --flatten="bindings[].members" \
+    --filter="bindings.members:user:${ACTIVE_ACCOUNT} AND (bindings.role:roles/cloudbuild OR bindings.role:roles/owner OR bindings.role:roles/editor)" \
+    --format="value(bindings.role)" 2>/dev/null | head -1 || true)
+  if [[ -z "$_CB_ROLE" ]]; then
+    printf '  Granting Cloud Build Editor to %s...\n' "$ACTIVE_ACCOUNT"
+    gcloud projects add-iam-policy-binding "$project" \
+      --member="user:${ACTIVE_ACCOUNT}" \
+      --role="roles/cloudbuild.builds.editor" --quiet
+  fi
+
+  local attempt=0
+  while (( attempt < 3 )); do
+    attempt=$(( attempt + 1 ))
+    set +e
+    gcloud builds submit --tag "$tag" --project "$project" "$srcdir"
+    local rc=$?
+    set -e
+    [[ "$rc" == "0" ]] && return 0
+    [[ "$rc" == "130" ]] && { printf '\n[deploy] Build cancelled.\n'; exit 130; }
+    if (( attempt < 3 )); then
+      printf '  Cloud Build submit failed (attempt %d/3) — waiting 20s for IAM propagation...\n' "$attempt"
+      sleep 20
+    fi
+  done
+  printf '[deploy] Cloud Build failed after 3 attempts.\n' >&2
+  return 1
+}
 
 if docker info >/dev/null 2>&1; then
   printf '\n[1/3] configuring docker auth...\n'
@@ -161,8 +277,8 @@ if docker info >/dev/null 2>&1; then
   docker push "$IMAGE"
 else
   printf '\nDocker not available — building via Cloud Build...\n'
-  gcloud services enable cloudbuild.googleapis.com --project "$GCP_PROJECT"
-  gcloud builds submit --tag "$IMAGE" --project "$GCP_PROJECT" "$ROOT_DIR"
+  _cloudbuild_submit "$IMAGE" "$GCP_PROJECT" "$ROOT_DIR"
+fi
 fi
 
 if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
@@ -189,16 +305,89 @@ if [[ "$DEPLOY_TARGET" == "gke" ]]; then
 else
   printf '\n=== deploying via Pulumi ===\n'
 
+  _pulumi_up_robust() {
+    local log_file
+    log_file="$(mktemp)"
+    local attempt=0 rc
+
+    while (( attempt < 5 )); do
+      attempt=$(( attempt + 1 ))
+      set +e
+      pulumi up --yes 2>&1 | tee "$log_file"
+      rc="${PIPESTATUS[0]}"
+      set -e
+
+      [[ "$rc" == "0" ]] && { rm -f "$log_file"; return 0; }
+
+      local conflicts
+      conflicts=$(python3 - "${log_file}" <<'PYEOF'
+import re, sys
+content = open(sys.argv[1]).read()
+lines = content.split('\n')
+seen = set()
+for i, line in enumerate(lines):
+    m = re.match(r'\s+(gcp:[^(]+)\(([^)]+)\):', line)
+    if m:
+        type_display = m.group(1).strip()
+        logical_name = m.group(2).strip()
+        for j in range(i, min(i+8, len(lines))):
+            id_m = re.search(r"'([^']+)' already exists", lines[j])
+            if id_m:
+                key = f'{type_display}|{logical_name}|{id_m.group(1)}'
+                if key not in seen:
+                    seen.add(key)
+                    print(key)
+                break
+PYEOF
+      2>/dev/null || true)
+
+      if [[ -z "$conflicts" ]]; then
+        rm -f "$log_file"
+        printf '[deploy] pulumi up failed with no importable conflicts — cannot auto-recover.\n' >&2
+        return 1
+      fi
+
+      printf '[deploy] Auto-importing conflicting resources (attempt %d)...\n' "$attempt"
+      while IFS='|' read -r type_display logical_name gcp_id; do
+        [[ -z "$type_display" ]] && continue
+        local module type_name import_type
+        module=$(printf '%s' "$type_display" | cut -d: -f2)
+        type_name=$(printf '%s' "$type_display" | cut -d: -f3)
+        import_type="gcp:${module}/${type_name,}:${type_name}"
+        printf '  importing: %s %s = %s\n' "$import_type" "$logical_name" "$gcp_id"
+        pulumi import "$import_type" "$logical_name" "$gcp_id" --yes 2>/dev/null || true
+      done <<< "$conflicts"
+    done
+
+    rm -f "$log_file"
+    printf '[deploy] pulumi up failed after %d attempts.\n' "$attempt" >&2
+    return 1
+  }
+
   cd "$INFRA_DIR"
   npm install --prefer-offline 2>/dev/null || npm install
-  pulumi stack select "dev" 2>/dev/null || pulumi stack init "dev"
-  pulumi config set gcp:project    "$GCP_PROJECT"
-  pulumi config set gcp:region     "$GCP_REGION"
-  pulumi config set backendUrl     "$BACKEND_URL"
-  pulumi config set frontendImage  "$IMAGE"
-  pulumi up --yes
+  pulumi stack select "$DEPLOY_MODE" 2>/dev/null || pulumi stack init "$DEPLOY_MODE"
+  pulumi config set gcp:project   "$GCP_PROJECT"
+  pulumi config set gcp:region    "$GCP_REGION"
+  pulumi config set backendUrl    "$BACKEND_URL"
+  pulumi config set frontendImage "$IMAGE"
+  if [[ "$DEPLOY_MODE" == "lite" ]]; then
+    pulumi config set namePrefix       "dash-lite"
+    pulumi config set minInstanceCount "0"
+    pulumi config set maxInstanceCount "1"
+    pulumi config set cpu              "1"
+    pulumi config set memory           "256Mi"
+  else
+    pulumi config set namePrefix       "dash"
+    pulumi config set minInstanceCount "1"
+    pulumi config set maxInstanceCount "3"
+    pulumi config set cpu              "1"
+    pulumi config set memory           "512Mi"
+  fi
+  _pulumi_up_robust
 
   FRONTEND_URL=$(pulumi stack output frontendUrl 2>/dev/null || true)
+  printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "$FRONTEND_URL" > "$FRONTEND_ENV_FILE"
   printf '\nDone. Frontend URL:\n  %s\n' "$FRONTEND_URL"
 fi
 
@@ -207,4 +396,10 @@ if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_EXPLORER" ]]; then
   printf '\nPatched portfolio API Explorer BASE → %s/api\n' "$FRONTEND_URL"
 elif [[ ! -f "$PORTFOLIO_EXPLORER" ]]; then
   printf '\n(Portfolio api-explorer.html not found — update BASE manually)\n'
+fi
+
+PORTFOLIO_SET_LIVE="$(cd "$(dirname "$0")/../../.." 2>/dev/null && pwd)/portfolio/scripts/set-live-url.sh"
+if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_SET_LIVE" ]]; then
+  printf '\nUpdating portfolio live-urls.js...\n'
+  bash "$PORTFOLIO_SET_LIVE" dashboard "$FRONTEND_URL" "$FRONTEND_URL/api-explorer.html"
 fi

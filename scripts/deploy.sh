@@ -376,7 +376,7 @@ PYEOF
     pulumi config set minInstanceCount "0"
     pulumi config set maxInstanceCount "1"
     pulumi config set cpu              "1"
-    pulumi config set memory           "256Mi"
+    pulumi config set memory           "512Mi"
   else
     pulumi config set namePrefix       "dash"
     pulumi config set minInstanceCount "1"
@@ -392,7 +392,7 @@ PYEOF
 fi
 
 if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_EXPLORER" ]]; then
-  sed -i '' "s|const BASE = '.*';|const BASE = '${FRONTEND_URL}/api';|" "$PORTFOLIO_EXPLORER"
+  sed -i '' "s|^    const BASE = .*;.*$|    const BASE = '${FRONTEND_URL}/api';|" "$PORTFOLIO_EXPLORER"
   printf '\nPatched portfolio API Explorer BASE → %s/api\n' "$FRONTEND_URL"
 elif [[ ! -f "$PORTFOLIO_EXPLORER" ]]; then
   printf '\n(Portfolio api-explorer.html not found — update BASE manually)\n'
@@ -401,5 +401,5 @@ fi
 PORTFOLIO_SET_LIVE="$(cd "$(dirname "$0")/../../.." 2>/dev/null && pwd)/portfolio/scripts/set-live-url.sh"
 if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_SET_LIVE" ]]; then
   printf '\nUpdating portfolio live-urls.js...\n'
-  bash "$PORTFOLIO_SET_LIVE" dashboard "$FRONTEND_URL" "$FRONTEND_URL/api-explorer.html"
+  bash "$PORTFOLIO_SET_LIVE" --tier "$DEPLOY_MODE" dashboard "$FRONTEND_URL"
 fi

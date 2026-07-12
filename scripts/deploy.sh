@@ -291,7 +291,7 @@ if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
   gcloud auth application-default login
 fi
 
-PORTFOLIO_EXPLORER="$(cd "$ROOT_DIR/../.." && pwd)/portfolio/orders-dashboard/api-explorer.html"
+PORTFOLIO_EXPLORER="$(cd "$ROOT_DIR/../.." && pwd)/portfolio/orders-dashboard/api-explorer-${DEPLOY_MODE}.html"
 
 if [[ "$DEPLOY_TARGET" == "gke" ]]; then
   printf '\n=== deploying to GKE via Cloud Build ===\n'

@@ -128,6 +128,8 @@ _CONFIG_REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
 GCP_REGION="${_CONFIG_REGION:-${GCP_REGION:-us-central1}}"
 
 _shasum() { shasum -a 256 "$@" 2>/dev/null || sha256sum "$@" 2>/dev/null; }
+DEMO_SCALE="$( [[ "$DEPLOY_MODE" == "full" ]] && printf '~4M demo orders' || printf '~500K demo orders' )"
+
 TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
     "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
     -type f 2>/dev/null | sort | xargs cat 2>/dev/null \
@@ -230,6 +232,8 @@ _IMG_EXISTS=$(gcloud artifacts docker tags list \
   --format="value(tag)" \
   --project "$GCP_PROJECT" 2>/dev/null | head -1 || true)
 
+printf 'VITE_DEMO_SCALE=%s\n' "$DEMO_SCALE" > "$ROOT_DIR/.env.production"
+
 if [[ -n "$_IMG_EXISTS" ]]; then
   printf '\n  Image %s already exists — skipping build.\n' "$IMAGE"
 else
@@ -280,6 +284,7 @@ else
   _cloudbuild_submit "$IMAGE" "$GCP_PROJECT" "$ROOT_DIR"
 fi
 fi
+rm -f "$ROOT_DIR/.env.production"
 
 if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
   printf '\nSetting up Application Default Credentials (required by Pulumi)...\n'
@@ -393,7 +398,8 @@ fi
 
 if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_EXPLORER" ]]; then
   sed -i '' "s|^    const BASE = .*;.*$|    const BASE = '${FRONTEND_URL}/api';|" "$PORTFOLIO_EXPLORER"
-  printf '\nPatched portfolio API Explorer BASE → %s/api\n' "$FRONTEND_URL"
+  sed -i '' "s|^    const DEMO_SCALE = .*;.*$|    const DEMO_SCALE = '${DEMO_SCALE}';|" "$PORTFOLIO_EXPLORER"
+  printf '\nPatched portfolio API Explorer BASE → %s/api, DEMO_SCALE → %s\n' "$FRONTEND_URL" "$DEMO_SCALE"
 elif [[ ! -f "$PORTFOLIO_EXPLORER" ]]; then
   printf '\n(Portfolio api-explorer.html not found — update BASE manually)\n'
 fi

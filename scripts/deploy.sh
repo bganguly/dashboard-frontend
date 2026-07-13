@@ -42,33 +42,42 @@ printf '\n'
 printf '  [3] Full   — GCP: Cloud Run (min 1 instance, always warm)'
 (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
 printf '               Full also unlocks GKE deployment.\n'
-printf '\nChoice [1/2/3]: '
-read -r _MODE
-case "$_MODE" in
-  2) _TARGET="remote"; DEPLOY_MODE="lite" ;;
-  3) _TARGET="remote"; DEPLOY_MODE="full" ;;
-  *) _TARGET="local";  DEPLOY_MODE=""    ;;
-esac
+_MODE_FROM_ENV=0
+if [[ -n "${DEPLOY_MODE:-}" ]]; then
+  _TARGET="remote"
+  _MODE_FROM_ENV=1
+  printf '\n  (DEPLOY_MODE=%s — skipping menu)\n' "$DEPLOY_MODE"
+else
+  printf '\nChoice [1/2/3]: '
+  read -r _MODE
+  case "$_MODE" in
+    2) _TARGET="remote"; DEPLOY_MODE="lite" ;;
+    3) _TARGET="remote"; DEPLOY_MODE="full" ;;
+    *) _TARGET="local";  DEPLOY_MODE=""    ;;
+  esac
+fi
 
 if [[ "$_TARGET" == "remote" ]]; then
   ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend-gcp/.env.gcp.${DEPLOY_MODE}"
   FRONTEND_ENV_FILE="$ROOT_DIR/.env.gcp.${DEPLOY_MODE}"
   [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
 
-  if [[ "$DEPLOY_MODE" == "lite" ]]; then
-    printf '\n--- Lite GCP summary ---\n'
-    printf '  Cloud Run:  min=0 instances (cold starts ~3s), max=1, 1 CPU / 256 Mi\n'
-    printf '  GKE:        skipped\n'
-    printf '  Cost est:   ~$5-10/mo if left running\n'
-  else
-    printf '\n--- Full GCP summary ---\n'
-    printf '  Cloud Run:  min=1 instance (always warm), max=3, 1 CPU / 512 Mi\n'
-    printf '  GKE:        available (you will be prompted)\n'
-    printf '  Cost est:   ~$20-40/mo if left running\n'
+  if (( ! _MODE_FROM_ENV )); then
+    if [[ "$DEPLOY_MODE" == "lite" ]]; then
+      printf '\n--- Lite GCP summary ---\n'
+      printf '  Cloud Run:  min=0 instances (cold starts ~3s), max=1, 1 CPU / 256 Mi\n'
+      printf '  GKE:        skipped\n'
+      printf '  Cost est:   ~$5-10/mo if left running\n'
+    else
+      printf '\n--- Full GCP summary ---\n'
+      printf '  Cloud Run:  min=1 instance (always warm), max=3, 1 CPU / 512 Mi\n'
+      printf '  GKE:        available (you will be prompted)\n'
+      printf '  Cost est:   ~$20-40/mo if left running\n'
+    fi
+    printf '\nProceed? [Y/n] '
+    read -r _CONFIRM
+    [[ -z "$_CONFIRM" || "$_CONFIRM" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
   fi
-  printf '\nProceed? [Y/n] '
-  read -r _CONFIRM
-  [[ -z "$_CONFIRM" || "$_CONFIRM" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════

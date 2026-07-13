@@ -140,7 +140,7 @@ _shasum() { shasum -a 256 "$@" 2>/dev/null || sha256sum "$@" 2>/dev/null; }
 DEMO_SCALE="$( [[ "$DEPLOY_MODE" == "full" ]] && printf '~4M demo orders' || printf '~500K demo orders' )"
 
 TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
-    "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
+    "$ROOT_DIR/index.html" "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
     -type f 2>/dev/null | sort | xargs cat 2>/dev/null \
   | _shasum | cut -c1-16 || true)
 TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
@@ -202,20 +202,6 @@ else
 fi
 [[ -n "$BACKEND_URL" ]] || { printf '\nCould not resolve backend URL — deploy the backend first.\n' >&2; exit 1; }
 
-printf '\n  Checking backend health at %s ...\n' "$BACKEND_URL"
-HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-  "${BACKEND_URL}/api/customers" --max-time 10 2>/dev/null || echo "000")
-if [[ "$HTTP_STATUS" == "200" ]]; then
-  printf '  Backend is healthy (HTTP 200).\n'
-elif [[ "$HTTP_STATUS" == "000" ]]; then
-  printf '  WARNING: Backend did not respond. Deploy anyway? [y/N] '
-  read -r proceed
-  [[ "$proceed" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
-else
-  printf '  WARNING: Backend returned HTTP %s. Deploy anyway? [y/N] ' "$HTTP_STATUS"
-  read -r proceed
-  [[ "$proceed" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
-fi
 
 _LISTED_REGISTRY=$(gcloud artifacts repositories list \
   --project="$GCP_PROJECT" \

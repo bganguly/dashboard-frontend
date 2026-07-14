@@ -25,6 +25,7 @@ export default function App() {
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_FILTERS);
   const [regionOptions, setRegionOptions] = useState<RegionOption[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [backendRuntime, setBackendRuntime] = useState<string | null>(null);
   // Total from the chart's /api/aggregates response — null while (re)loading.
   const [chartTotal, setChartTotal] = useState<number | null>(null);
   // Exact count from SearchTable's background /count refine — null until settled.
@@ -32,6 +33,13 @@ export default function App() {
 
   // Reset both on every new search/filter so consumers show a skeleton.
   useEffect(() => { setChartTotal(null); setExactCount(null); }, [filters, searchQuery]);
+
+  useEffect(() => {
+    fetch("/api/runtime")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { runtime: string }) => setBackendRuntime(d.runtime))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,12 +70,22 @@ export default function App() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
             <p className="text-sm text-gray-500">Aggregates, search, and order history.</p>
-            {import.meta.env.VITE_DEMO_SCALE && (
-              <span className="inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full font-medium"
-                style={{ background:"rgba(99,102,241,0.10)", border:"1px solid rgba(99,102,241,0.25)", color:"#818cf8" }}>
-                demo · {import.meta.env.VITE_DEMO_SCALE}
-              </span>
-            )}
+            <div className="flex items-center gap-2 mt-1">
+              {import.meta.env.VITE_DEMO_SCALE && (
+                <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={{ background:"rgba(99,102,241,0.10)", border:"1px solid rgba(99,102,241,0.25)", color:"#818cf8" }}>
+                  demo · {import.meta.env.VITE_DEMO_SCALE}
+                </span>
+              )}
+              {backendRuntime && (
+                <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={backendRuntime === "gke"
+                    ? { background:"rgba(16,185,129,0.10)", border:"1px solid rgba(16,185,129,0.25)", color:"#34d399" }
+                    : { background:"rgba(251,146,60,0.10)", border:"1px solid rgba(251,146,60,0.25)", color:"#fb923c" }}>
+                  backend · {backendRuntime}
+                </span>
+              )}
+            </div>
           </div>
           <ThemeToggle />
         </header>

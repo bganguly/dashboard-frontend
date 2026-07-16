@@ -5,7 +5,13 @@ search and chart responses across 4 million orders. Served via multi-stage Docke
 deployed as a GCP Cloud Run service managed by **Pulumi TypeScript IaC**. Nginx acts as a BFF proxy —
 routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
-Sister repo: [springboot-dashboard-backend-gcp](https://github.com/bganguly/springboot-dashboard-backend-gcp)
+**[→ Portfolio demo](https://bganguly.github.io/?open=dashboard)**
+
+## Using the App
+
+1. **Search** — type in the search bar to query across all columns (name, notes, total, order ID, status, region, date) via GIN trigram index; sub-second on 4 M+ rows.
+2. **Filter** — use the sidebar to narrow by status, region, date range, or total amount.
+3. **Aggregates chart** — the chart shows daily orders by product category; drag the brush to zoom into any date window.
 
 ---
 
@@ -54,6 +60,16 @@ Both scripts prompt for **[1] Local** or **[2] Remote (GCP)** on launch.
 | Deploy to GCP (Cloud Run or GKE) | `./scripts/deploy.sh` | `[2]` | Backend must be deployed first |
 | Stop local dev server | `./scripts/infra-down.sh` | `[1]` | Kills port 3006 |
 | Teardown GCP frontend | `./scripts/infra-down.sh` | `[2]` | Pulumi destroy on frontend stack |
+
+`./scripts/deploy.sh [2]` builds the Docker image (Vite → Nginx multi-stage), pushes to Artifact Registry, and runs `pulumi up --yes` to deploy the frontend Cloud Run service:
+
+```
+./scripts/deploy.sh [2]
+  ├─ docker build (multi-stage: Vite build → Nginx image)
+  ├─ docker push → Artifact Registry
+  └─ pulumi up --yes
+       └─ Cloud Run: dash-frontend (0–3 instances, BACKEND_URL injected)
+```
 
 Local: `BACKEND_URL=http://other-host:8080 ./scripts/deploy.sh` to override the backend target. Node 20+ required.
 

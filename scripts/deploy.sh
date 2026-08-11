@@ -177,7 +177,8 @@ fi
 GKE_CLUSTER="${GKE_CLUSTER:-dash-gke-cluster}"
 K8S_NAMESPACE="dash"
 
-BACKEND_URL=""
+BACKEND_URL="${BACKEND_URL:-}"
+if [[ -z "$BACKEND_URL" ]]; then
 if [[ "$DEPLOY_TARGET" == "gke" ]]; then
   GKE_ZONE="${GCP_REGION}-a"
   printf '\n  Resolving backend URL from GKE ingress (zone: %s)...\n' "$GKE_ZONE"
@@ -199,6 +200,18 @@ else
       pulumi stack select "$DEPLOY_MODE" 2>/dev/null && \
       pulumi stack output backendUrl 2>/dev/null || true)
   fi
+  if [[ -z "$BACKEND_URL" ]]; then
+    printf '\n  Pulumi gave no URL — checking GKE LoadBalancer service...\n'
+    _LB_NS="${DEPLOY_MODE_PREFIX:-dash-lite}"
+    _SDK_BIN="$(gcloud info --format='value(installation.sdk_root)')/bin"
+    export PATH="${_SDK_BIN}:${PATH}"
+    gcloud container clusters get-credentials "${_LB_NS}-cluster" \
+      --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --quiet 2>/dev/null || true
+    _IP=$(kubectl get svc "${_LB_NS}-backend" -n "${_LB_NS}" \
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+    [[ -n "$_IP" ]] && BACKEND_URL="http://${_IP}"
+  fi
+fi
 fi
 [[ -n "$BACKEND_URL" ]] || { printf '\nCould not resolve backend URL — deploy the backend first.\n' >&2; exit 1; }
 
@@ -286,7 +299,6 @@ if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
   gcloud auth application-default login
 fi
 
-PORTFOLIO_EXPLORER="$(cd "$ROOT_DIR/../.." && pwd)/portfolio/orders-dashboard/api-explorer-${DEPLOY_MODE}.html"
 
 if [[ "$DEPLOY_TARGET" == "gke" ]]; then
   printf '\n=== deploying to GKE via Cloud Build ===\n'
@@ -391,16 +403,3 @@ PYEOF
   printf '\nDone. Frontend URL:\n  %s\n' "$FRONTEND_URL"
 fi
 
-if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_EXPLORER" ]]; then
-  sed -i '' "s|^    const BASE = .*;.*$|    const BASE = '${FRONTEND_URL}/api';|" "$PORTFOLIO_EXPLORER"
-  sed -i '' "s|^    const DEMO_SCALE = .*;.*$|    const DEMO_SCALE = '${DEMO_SCALE}';|" "$PORTFOLIO_EXPLORER"
-  printf '\nPatched portfolio API Explorer BASE → %s/api, DEMO_SCALE → %s\n' "$FRONTEND_URL" "$DEMO_SCALE"
-elif [[ ! -f "$PORTFOLIO_EXPLORER" ]]; then
-  printf '\n(Portfolio api-explorer.html not found — update BASE manually)\n'
-fi
-
-PORTFOLIO_SET_LIVE="$(cd "$(dirname "$0")/../../.." 2>/dev/null && pwd)/portfolio/scripts/set-live-url.sh"
-if [[ -n "$FRONTEND_URL" && -f "$PORTFOLIO_SET_LIVE" ]]; then
-  printf '\nUpdating portfolio live-urls.js...\n'
-  bash "$PORTFOLIO_SET_LIVE" --tier "$DEPLOY_MODE" dashboard "$FRONTEND_URL"
-fi

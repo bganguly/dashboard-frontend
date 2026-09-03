@@ -5,7 +5,7 @@ search and chart responses across 4 million orders. Served via multi-stage Docke
 deployed as a GCP Cloud Run service managed by **Pulumi TypeScript IaC**. Nginx acts as a BFF proxy —
 routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
-**[→ Portfolio demo](https://bganguly.github.io/?open=dashboard)**
+**[→ Portfolio demo](https://bganguly.github.io/#orders_dashboard)**
 
 ## Using the App
 

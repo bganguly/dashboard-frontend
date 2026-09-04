@@ -5,7 +5,18 @@ search and chart responses across 4 million orders. Served via multi-stage Docke
 deployed as a GCP Cloud Run service managed by **Pulumi TypeScript IaC**. Nginx acts as a BFF proxy —
 routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
-**[→ Portfolio demo](https://bganguly.github.io/#orders_dashboard)**
+---
+
+## Live Service
+
+| Endpoint | URL |
+|---|---|
+| **App** | available on demand |
+| **Portfolio demo** | https://bganguly.github.io/#orders_dashboard |
+
+> Cloud Run scales to zero when idle; run deploy.sh to provision GCP infrastructure and start the service.
+
+---
 
 ## Using the App
 
@@ -77,23 +88,6 @@ Local: `BACKEND_URL=http://other-host:8080 ./scripts/deploy.sh` to override the 
 
 > **GCP availability:** The live GCP endpoint is not guaranteed to be running at all times. Use local mode to explore without incurring cloud costs.
 
----
-
-## Live Service
-
-| | URL |
-|---|---|
-| **Frontend** | https://dash-frontend-7u2hpcwtmq-uc.a.run.app |
-
-```bash
-# local (via Vite dev-server proxy)
-curl "http://localhost:3006/api/orders?page=1&size=3" | jq .total
-
-# GCP (if deployed, via Nginx proxy)
-BASE=https://dash-frontend-7u2hpcwtmq-uc.a.run.app
-curl -I "$BASE"
-curl "$BASE/api/orders?page=1&size=3" | jq .total
-```
 
 ---
 

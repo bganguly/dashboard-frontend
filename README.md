@@ -38,6 +38,45 @@ routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
 ---
 
+## Architecture / Topology
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              GCP Project                                │
+│                                                                         │
+│   Artifact Registry                                                     │
+│   ┌──────────────────┐    ◄── docker push (deploy.sh)                  │
+│   │  frontend image  │                                                  │
+│   │  backend image   │                                                  │
+│   └──────────────────┘                                                  │
+│           │ image pull                                                  │
+│           ▼                                                             │
+│   ┌───────────────────────────────────────────────────────────────┐     │
+│   │                       dash-vpc (private)                      │     │
+│   │                                                               │     │
+│   │  Cloud Run: dash-frontend          Cloud Run: dash-backend    │     │
+│   │  ┌─────────────────────────┐       ┌──────────────────────┐   │     │
+│   │  │ Nginx (port 80)         │       │ Spring Boot (8080)   │   │     │
+│   │  │ • serves Vite dist      │ HTTPS │ • REST /api/*        │   │     │
+│   │  │ • proxies /api/* ───────┼──────►│ • Flyway migrations  │   │     │
+│   │  │   proxy_ssl_server_name │  SNI  │ • 1–5 instances      │   │     │
+│   │  │ • 0–3 instances         │       └──────────┬───────────┘   │     │
+│   │  └─────────────────────────┘                  │               │     │
+│   │           ▲                          Direct VPC Egress        │     │
+│   └───────────┼──────────────────────────────────┼───────────────┘     │
+│               │ HTTPS                             │ private IP           │
+│           Browser                    ┌────────────▼───────────┐        │
+│                                      │  Cloud SQL PG 16       │        │
+│                                      │  4 M orders            │        │
+│                                      │  GIN trigram index     │        │
+│                                      │  pre-agg summary tables│        │
+│                                      └────────────────────────┘        │
+│                                                                         │
+│   Pulumi TypeScript (infra/index.ts) manages all resources above        │
+│   Secret Manager: dash-database-url (injected into backend at runtime)  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
 ## Features
 
 - **Orders table** — paginated, sortable (ID / customer / total / date), filter sidebar (status, region, date range, total range)
@@ -90,42 +129,3 @@ Local: `BACKEND_URL=http://other-host:8080 ./scripts/deploy.sh` to override the 
 
 
 ---
-
-## Architecture / Topology
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              GCP Project                                │
-│                                                                         │
-│   Artifact Registry                                                     │
-│   ┌──────────────────┐    ◄── docker push (deploy.sh)                  │
-│   │  frontend image  │                                                  │
-│   │  backend image   │                                                  │
-│   └──────────────────┘                                                  │
-│           │ image pull                                                  │
-│           ▼                                                             │
-│   ┌───────────────────────────────────────────────────────────────┐     │
-│   │                       dash-vpc (private)                      │     │
-│   │                                                               │     │
-│   │  Cloud Run: dash-frontend          Cloud Run: dash-backend    │     │
-│   │  ┌─────────────────────────┐       ┌──────────────────────┐   │     │
-│   │  │ Nginx (port 80)         │       │ Spring Boot (8080)   │   │     │
-│   │  │ • serves Vite dist      │ HTTPS │ • REST /api/*        │   │     │
-│   │  │ • proxies /api/* ───────┼──────►│ • Flyway migrations  │   │     │
-│   │  │   proxy_ssl_server_name │  SNI  │ • 1–5 instances      │   │     │
-│   │  │ • 0–3 instances         │       └──────────┬───────────┘   │     │
-│   │  └─────────────────────────┘                  │               │     │
-│   │           ▲                          Direct VPC Egress        │     │
-│   └───────────┼──────────────────────────────────┼───────────────┘     │
-│               │ HTTPS                             │ private IP           │
-│           Browser                    ┌────────────▼───────────┐        │
-│                                      │  Cloud SQL PG 16       │        │
-│                                      │  4 M orders            │        │
-│                                      │  GIN trigram index     │        │
-│                                      │  pre-agg summary tables│        │
-│                                      └────────────────────────┘        │
-│                                                                         │
-│   Pulumi TypeScript (infra/index.ts) manages all resources above        │
-│   Secret Manager: dash-database-url (injected into backend at runtime)  │
-└─────────────────────────────────────────────────────────────────────────┘
-```

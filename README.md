@@ -26,6 +26,8 @@ routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
 ---
 
+## Stack
+
 | | |
 |---|---|
 | **React / TypeScript front-end** | React 19, TypeScript, Vite, Tailwind CSS, Recharts |
@@ -100,7 +102,7 @@ Browser ──HTTPS──► Nginx / Cloud Run ──proxy /api/* (SNI)──►
 
 ---
 
-## Running
+## Deployment / Running
 
 Both scripts prompt for **[1] Local** or **[2] Remote (GCP)** on launch.
 

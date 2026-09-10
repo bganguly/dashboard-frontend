@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Chart from "./components/Chart";
 import SearchTable, { type SearchRow } from "./components/SearchTable";
 import ThemeToggle from "./components/ThemeToggle";
@@ -7,6 +7,8 @@ import FilterSidebar, {
   type OrderFilters,
   type RegionOption,
 } from "./components/FilterSidebar";
+
+const SLOW_WAKING_MS = 800;
 
 function mergeRegions(prev: RegionOption[], incoming: RegionOption[]): RegionOption[] {
   const map = new Map(prev.map((r) => [r.code, r]));
@@ -31,14 +33,46 @@ export default function App() {
   // Exact count from SearchTable's background /count refine — null until settled.
   const [exactCount, setExactCount] = useState<number | null>(null);
 
+  const [wakeStatus, setWakeStatus] = useState<"waking" | "ready" | null>(null);
+  const [wakeMs, setWakeMs] = useState(0);
+  const wakeStart = useRef<number>(0);
+  const wakeInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Reset both on every new search/filter so consumers show a skeleton.
   useEffect(() => { setChartTotal(null); setExactCount(null); }, [filters, searchQuery]);
 
   useEffect(() => {
+    wakeStart.current = performance.now();
+    slowTimer.current = setTimeout(() => {
+      setWakeStatus("waking");
+      setWakeMs(0);
+      wakeInterval.current = setInterval(() => {
+        setWakeMs(Math.round(performance.now() - wakeStart.current));
+      }, 100);
+    }, SLOW_WAKING_MS);
+
     fetch("/api/runtime")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: { runtime: string }) => setBackendRuntime(d.runtime))
-      .catch(() => {});
+      .then((d: { runtime: string }) => {
+        setBackendRuntime(d.runtime);
+        if (slowTimer.current) { clearTimeout(slowTimer.current); slowTimer.current = null; }
+        if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
+        setWakeStatus((s) => (s === "waking" ? "ready" : null));
+        dismissTimer.current = setTimeout(() => setWakeStatus(null), 2500);
+      })
+      .catch(() => {
+        if (slowTimer.current) { clearTimeout(slowTimer.current); slowTimer.current = null; }
+        if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
+        setWakeStatus(null);
+      });
+
+    return () => {
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+      if (wakeInterval.current) clearInterval(wakeInterval.current);
+      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -86,6 +120,33 @@ export default function App() {
                 </span>
               )}
             </div>
+          </div>
+          <div className="flex flex-1 justify-center px-4">
+            {wakeStatus && (
+              <div
+                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm"
+                style={wakeStatus === "waking"
+                  ? { background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.30)", color: "#fbbf24" }
+                  : { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.30)", color: "#4ade80" }}
+              >
+                {wakeStatus === "waking" ? (
+                  <>
+                    <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="20" />
+                    </svg>
+                    Backend waking up from idle —
+                    <span className="ml-1 font-mono tabular-nums opacity-70">{(wakeMs / 1000).toFixed(1)}s</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Backend ready
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <ThemeToggle />
         </header>

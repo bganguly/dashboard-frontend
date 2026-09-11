@@ -1,0 +1,10 @@
+#!include:.gitignore
+
+scripts/
+infra/
+k8s/
+coverage/
+dist/
+README.md
+tsconfig.tsbuildinfo
+cloudbuild-gke.yaml

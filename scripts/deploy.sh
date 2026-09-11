@@ -163,10 +163,10 @@ else
     printf '\n  Cloud Run service detected — redeploying to Cloud Run.\n'
   else
     printf '\n  No existing deployment detected.\n'
-    printf '  Deploy to GKE (~$22/mo, always-on)? [y/N]: '
+    printf '  Continue to deploy to Cloud Run? [Y/n]: '
     read -r _CHOICE
-    case "${_CHOICE:-N}" in
-      [yY]*) DEPLOY_TARGET="gke" ;;
+    case "${_CHOICE:-Y}" in
+      [nN]*) DEPLOY_TARGET="gke" ;;
       *)     DEPLOY_TARGET="cloudrun" ;;
     esac
     printf '\n  Target: %s\n' "$DEPLOY_TARGET"

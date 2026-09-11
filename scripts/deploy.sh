@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="$ROOT_DIR/infra"
-BACKEND_INFRA_DIR="$(cd "$ROOT_DIR/../springboot-dashboard-backend-gcp/infra" 2>/dev/null && pwd || true)"
+BACKEND_INFRA_DIR="$(cd "$ROOT_DIR/../springboot-dashboard-backend/infra" 2>/dev/null && pwd || true)"
 ENV_FILE=""
 cd "$ROOT_DIR"
 
@@ -198,7 +198,13 @@ else
   fi
 fi
 fi
-[[ -n "$BACKEND_URL" ]] || { printf '\nCould not resolve backend URL — deploy the backend first.\n' >&2; exit 1; }
+if [[ -z "$BACKEND_URL" ]]; then
+  printf '\nCould not resolve backend URL automatically.\n'
+  printf 'Enter backend URL (or press Enter to abort): '
+  read -r _MANUAL_URL
+  [[ -n "$_MANUAL_URL" ]] || { printf 'Aborted.\n'; exit 1; }
+  BACKEND_URL="$_MANUAL_URL"
+fi
 
 
 _FE_PREFIX=$([[ "$DEPLOY_MODE" == "lite" ]] && printf 'dash-lite' || printf 'dash')

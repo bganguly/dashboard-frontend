@@ -70,6 +70,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const [range, setRange] = useState(defaultRange);
   const onTotalChangeRef = useRef(onTotalChange);
   const [loading, setLoading] = useState(false);
+  const [warmingUp, setWarmingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -117,11 +118,20 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     const from = filters?.from || defaultRange().from;
     const to = filters?.to || defaultRange().to;
     setRange({ from, to });
+    // Reset dedup key so a new closure (searchQuery/filters changed) always
+    // fires a fresh request even if the resulting URL matches a prior one.
+    lastRequestKeyRef.current = null;
     fetchAggregates(from, to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchAggregates, filters?.from, filters?.to]);
 
   useEffect(() => () => { abortRef.current?.abort(); lastRequestKeyRef.current = null; if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
+
+  useEffect(() => {
+    if (!loading) { setWarmingUp(false); return; }
+    const t = setTimeout(() => setWarmingUp(true), 8000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   // Keep ref in sync so the effect below doesn't need onTotalChange as a dep.
   useEffect(() => { onTotalChangeRef.current = onTotalChange; });
@@ -196,7 +206,19 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       {error ? (
         <div className="flex h-72 items-center justify-center text-sm text-red-500">Failed: {error}</div>
       ) : buckets.length === 0 ? (
-        <div className="flex h-72 items-center justify-center text-sm text-gray-400">{loading ? "Loading…" : "No data."}</div>
+        <div className="flex h-72 flex-col items-center justify-center gap-2 text-sm text-gray-400">
+          {loading ? (
+            <>
+              <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
+              {warmingUp ? (
+                <span className="text-center">
+                  <span className="block">Backend waking up…</span>
+                  <span className="block text-xs text-gray-300 dark:text-gray-600">Cloud Run scales to zero when idle — first request takes ~30s</span>
+                </span>
+              ) : "Loading…"}
+            </>
+          ) : "No data."}
+        </div>
       ) : (
         <>
           <ResponsiveContainer width="100%" height={320}>

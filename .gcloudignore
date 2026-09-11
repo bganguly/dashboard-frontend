@@ -1,5 +1,6 @@
 #!include:.gitignore
 
+.git/
 scripts/
 infra/
 k8s/

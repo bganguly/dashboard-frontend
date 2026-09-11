@@ -63,18 +63,7 @@ if [[ "$_TARGET" == "remote" ]]; then
   [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
 
   if (( ! _MODE_FROM_ENV )); then
-    if [[ "$DEPLOY_MODE" == "lite" ]]; then
-      printf '\n--- Lite GCP summary ---\n'
-      printf '  Cloud Run:  min=0 instances (cold starts ~3s), max=1, 1 CPU / 256 Mi\n'
-      printf '  GKE:        skipped\n'
-      printf '  Cost est:   ~$5-10/mo if left running\n'
-    else
-      printf '\n--- Full GCP summary ---\n'
-      printf '  Cloud Run:  min=1 instance (always warm), max=3, 1 CPU / 512 Mi\n'
-      printf '  GKE:        available (you will be prompted)\n'
-      printf '  Cost est:   ~$20-40/mo if left running\n'
-    fi
-    printf '\nProceed? [Y/n] '
+    printf 'Proceed? [Y/n] '
     read -r _CONFIRM
     [[ -z "$_CONFIRM" || "$_CONFIRM" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
   fi
@@ -125,7 +114,7 @@ if [[ -z "$ACTIVE_ACCOUNT" ]]; then
   ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
   [[ -n "$ACTIVE_ACCOUNT" ]] || { printf 'Login did not complete.\n' >&2; exit 1; }
 fi
-printf '\nAuthenticated as: %s\n' "$ACTIVE_ACCOUNT"
+printf 'Auth: %s\n' "$ACTIVE_ACCOUNT"
 
 printf '\n=== deployment config ===\n'
 
@@ -145,7 +134,7 @@ TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
   | _shasum | cut -c1-16 || true)
 TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
 
-printf '  Project: %s\n  Region:  %s\n' "$GCP_PROJECT" "$GCP_REGION"
+printf '  Project: %s  Region: %s\n' "$GCP_PROJECT" "$GCP_REGION"
 
 if [[ "$DEPLOY_MODE" == "lite" ]]; then
   DEPLOY_TARGET="cloudrun"
@@ -180,7 +169,6 @@ BACKEND_URL="${BACKEND_URL:-}"
 if [[ -z "$BACKEND_URL" ]]; then
 if [[ "$DEPLOY_TARGET" == "gke" ]]; then
   GKE_ZONE="${GCP_REGION}-a"
-  printf '\n  Resolving backend URL from GKE ingress (zone: %s)...\n' "$GKE_ZONE"
   if ! command -v kubectl >/dev/null 2>&1; then
     printf '  kubectl not found — installing via gcloud components...\n'
     gcloud components install kubectl --quiet
@@ -193,14 +181,12 @@ if [[ "$DEPLOY_TARGET" == "gke" ]]; then
     -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
   [[ -n "$_IP" ]] && BACKEND_URL="http://${_IP}"
 else
-  printf '\n  Resolving backend URL from Pulumi stack...\n'
   if [[ -n "$BACKEND_INFRA_DIR" && -d "$BACKEND_INFRA_DIR" ]] && command -v pulumi >/dev/null 2>&1; then
     BACKEND_URL=$(cd "$BACKEND_INFRA_DIR" && \
       pulumi stack select "$DEPLOY_MODE" 2>/dev/null && \
       pulumi stack output backendUrl 2>/dev/null || true)
   fi
   if [[ -z "$BACKEND_URL" ]]; then
-    printf '\n  Pulumi gave no URL — checking GKE LoadBalancer service...\n'
     _LB_NS="${DEPLOY_MODE_PREFIX:-dash-lite}"
     _SDK_BIN="$(gcloud info --format='value(installation.sdk_root)')/bin"
     export PATH="${_SDK_BIN}:${PATH}"
@@ -215,16 +201,12 @@ fi
 [[ -n "$BACKEND_URL" ]] || { printf '\nCould not resolve backend URL — deploy the backend first.\n' >&2; exit 1; }
 
 
-_LISTED_REGISTRY=$(gcloud artifacts repositories list \
-  --project="$GCP_PROJECT" \
-  --location="$GCP_REGION" \
-  --format="value(name)" 2>/dev/null | head -1 || true)
-_LISTED_REGISTRY="${_LISTED_REGISTRY##*/}"
-REGISTRY="${_LISTED_REGISTRY:-${ARTIFACT_REGISTRY:-${GCP_PROJECT}-gradle}}"
+_FE_PREFIX=$([[ "$DEPLOY_MODE" == "lite" ]] && printf 'dash-lite' || printf 'dash')
+REGISTRY="${_FE_PREFIX}-frontend-repo"
 
 if ! gcloud artifacts repositories describe "$REGISTRY" \
       --project="$GCP_PROJECT" --location="$GCP_REGION" >/dev/null 2>&1; then
-  printf '\n  No Artifact Registry repo found — creating "%s" in %s...\n' "$REGISTRY" "$GCP_REGION"
+  printf '  Creating repo "%s"...\n' "$REGISTRY"
   gcloud artifacts repositories create "$REGISTRY" \
     --repository-format=docker \
     --location="$GCP_REGION" \
@@ -242,9 +224,9 @@ _IMG_EXISTS=$(gcloud artifacts docker tags list \
 printf 'VITE_DEMO_SCALE=%s\n' "$DEMO_SCALE" > "$ROOT_DIR/.env.production"
 
 if [[ -n "$_IMG_EXISTS" ]]; then
-  printf '\n  Image %s already exists — skipping build.\n' "$IMAGE"
+  printf '  Image %s exists — skipping build.\n' "$TAG"
 else
-  printf '\nBuilding and pushing:\n  %s\n' "$IMAGE"
+  printf 'Building: %s\n' "$IMAGE"
 
 _cloudbuild_submit() {
   local tag="$1" project="$2" srcdir="$3"
@@ -280,21 +262,17 @@ _cloudbuild_submit() {
 }
 
 if docker info >/dev/null 2>&1; then
-  printf '\n[1/3] configuring docker auth...\n'
   gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-  printf '[2/3] building image...\n'
   docker build --platform linux/amd64 -t "$IMAGE" "$ROOT_DIR"
-  printf '[3/3] pushing image...\n'
   docker push "$IMAGE"
 else
-  printf '\nDocker not available — building via Cloud Build...\n'
   _cloudbuild_submit "$IMAGE" "$GCP_PROJECT" "$ROOT_DIR"
 fi
 fi
 rm -f "$ROOT_DIR/.env.production"
 
 if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
-  printf '\nSetting up Application Default Credentials (required by Pulumi)...\n'
+  printf 'Setting up ADC (required by Pulumi)...\n'
   gcloud auth application-default login
 fi
 

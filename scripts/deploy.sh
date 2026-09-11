@@ -307,6 +307,21 @@ if [[ "$DEPLOY_TARGET" == "gke" ]]; then
   FRONTEND_URL="<check GKE ingress — see Cloud Build output above>"
   printf '\nDone. Check ingress IP in Cloud Build output above.\n'
 else
+  if [[ -n "$_IMG_EXISTS" ]]; then
+    _DEPLOYED_IMG=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
+      --region "$GCP_REGION" --project "$GCP_PROJECT" \
+      --format="value(spec.template.spec.containers[0].image)" 2>/dev/null || true)
+    if [[ "$_DEPLOYED_IMG" == "$IMAGE" ]]; then
+      printf '  Cloud Run already serving %s — skipping Pulumi.\n' "$TAG"
+      FRONTEND_URL=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
+        --region "$GCP_REGION" --project "$GCP_PROJECT" \
+        --format="value(status.url)" 2>/dev/null || true)
+      printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "${FRONTEND_URL:-}" > "$FRONTEND_ENV_FILE"
+      printf '\nFrontend unchanged. URL:\n  %s\n' "${FRONTEND_URL:-}"
+      exit 0
+    fi
+  fi
+
   printf '\n=== deploying via Pulumi ===\n'
 
   _pulumi_up_robust() {

@@ -243,20 +243,35 @@ _cloudbuild_submit() {
       --role="roles/cloudbuild.builds.editor" --quiet
   fi
 
-  local attempt=0
+  local cache_tag tmpyaml
+  cache_tag="${tag%:*}:cache"
+  tmpyaml=$(mktemp /tmp/cloudbuild.XXXXXX.yaml)
+  cat > "$tmpyaml" <<YAML
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: bash
+  args:
+  - -c
+  - |
+    docker pull '${cache_tag}' 2>/dev/null || true
+    docker build --cache-from '${cache_tag}' -t '${tag}' -t '${cache_tag}' .
+- name: 'gcr.io/cloud-builders/docker'
+  args: [push, '${tag}']
+- name: 'gcr.io/cloud-builders/docker'
+  args: [push, '${cache_tag}']
+images:
+- '${tag}'
+- '${cache_tag}'
+YAML
+  local attempt=0 rc
   while (( attempt < 3 )); do
     attempt=$(( attempt + 1 ))
-    set +e
-    gcloud builds submit --tag "$tag" --project "$project" "$srcdir"
-    local rc=$?
-    set -e
-    [[ "$rc" == "0" ]] && return 0
-    [[ "$rc" == "130" ]] && { printf '\n[deploy] Build cancelled.\n'; exit 130; }
-    if (( attempt < 3 )); then
-      printf '  Cloud Build submit failed (attempt %d/3) — waiting 20s for IAM propagation...\n' "$attempt"
-      sleep 20
-    fi
+    set +e; gcloud builds submit --config "$tmpyaml" --project "$project" "$srcdir"; rc=$?; set -e
+    [[ "$rc" == "0" ]] && { rm -f "$tmpyaml"; return 0; }
+    [[ "$rc" == "130" ]] && { printf '\n[deploy] Build cancelled.\n'; rm -f "$tmpyaml"; exit 130; }
+    (( attempt < 3 )) && { printf '  Cloud Build submit failed (attempt %d/3) — waiting 20s for IAM propagation...\n' "$attempt"; sleep 20; }
   done
+  rm -f "$tmpyaml"
   printf '[deploy] Cloud Build failed after 3 attempts.\n' >&2
   return 1
 }

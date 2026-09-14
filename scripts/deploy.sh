@@ -48,12 +48,12 @@ if [[ -n "${DEPLOY_MODE:-}" ]]; then
   _MODE_FROM_ENV=1
   printf '\n  (DEPLOY_MODE=%s — skipping menu)\n' "$DEPLOY_MODE"
 else
-  printf '\nChoice [1/2/3]: '
+  printf '\nChoice [1/2/3, default 3]: '
   read -r _MODE
   case "$_MODE" in
+    1) _TARGET="local";  DEPLOY_MODE=""    ;;
     2) _TARGET="remote"; DEPLOY_MODE="lite" ;;
-    3) _TARGET="remote"; DEPLOY_MODE="full" ;;
-    *) _TARGET="local";  DEPLOY_MODE=""    ;;
+    *) _TARGET="remote"; DEPLOY_MODE="full" ;;
   esac
 fi
 

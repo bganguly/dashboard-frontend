@@ -39,7 +39,7 @@ printf '\n'
 printf '  [2] Lite   — GCP: Cloud Run (scales to zero, cold starts OK) ~400K orders'
 (( _lite_count > 0 )) && printf ' [%s resources active]' "$_lite_count" || printf ' [not deployed]'
 printf '\n'
-printf '  [3] Full   — GCP: Cloud Run (min 1 instance, always warm) ~4M orders'
+printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders'
 (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
 printf '               Cloud Run deployment; GKE available on request.\n'
 _MODE_FROM_ENV=0
@@ -62,11 +62,6 @@ if [[ "$_TARGET" == "remote" ]]; then
   FRONTEND_ENV_FILE="$ROOT_DIR/.env.gcp.${DEPLOY_MODE}"
   [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
 
-  if (( ! _MODE_FROM_ENV )); then
-    printf 'Proceed? [Y/n] '
-    read -r _CONFIRM
-    [[ -z "$_CONFIRM" || "$_CONFIRM" =~ ^[Yy]$ ]] || { printf 'Aborted.\n'; exit 0; }
-  fi
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════

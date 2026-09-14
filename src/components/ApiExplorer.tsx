@@ -519,6 +519,21 @@ function RegionsCard() {
       {result && !loading && (
         <>
           <MetaBar ms={result.ms} label={`${rows.length} region${rows.length !== 1 ? "s" : ""} returned`} />
+          {rows.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem", marginBottom: "0.75rem" }}>
+              {(rows as Record<string, unknown>[]).map((r, i) => {
+                const name  = String(r.name  || r.code || r.id || "—");
+                const code  = r.code && r.code !== r.name ? String(r.code) : null;
+                return (
+                  <span key={i} style={{ fontSize: "0.6875rem", padding: "0.2rem 0.6rem",
+                    borderRadius: "9999px", background: "rgba(129,140,248,0.10)",
+                    border: "1px solid rgba(129,140,248,0.25)", color: "#a5b4fc" }}>
+                    {code ? `${code} · ${name}` : name}
+                  </span>
+                );
+              })}
+            </div>
+          )}
           <RawJson data={result.json} />
         </>
       )}
@@ -589,24 +604,36 @@ function BrushCard() {
   }
 
   const attachHandlers = useCallback(() => {
-    ["l", "r"].forEach(side => {
-      const handle = side === "l" ? hlRef.current : hrRef.current;
-      const track  = trackRef.current;
-      if (!handle || !track) return;
-      handle.addEventListener("pointerdown", e => { e.preventDefault(); (e.target as Element).setPointerCapture(e.pointerId); });
-      handle.addEventListener("pointermove", e => {
-        if (!(e.target as Element).hasPointerCapture(e.pointerId) || !S.current.data.length) return;
-        const rect = track.getBoundingClientRect();
-        const pos  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        const min  = 1 / Math.max(S.current.data.length, 1);
-        if (side === "l") S.current.brushL = Math.min(pos, S.current.brushR - min);
-        else              S.current.brushR = Math.max(pos, S.current.brushL + min);
-        updateVisuals();
-        if (brushTimer.current) clearTimeout(brushTimer.current);
-        brushTimer.current = setTimeout(() => doBrushFetch(), 180);
-      });
-      handle.addEventListener("pointerup", e => (e.target as Element).releasePointerCapture(e.pointerId));
+    const track = trackRef.current;
+    const hlEl  = hlRef.current;
+    const hrEl  = hrRef.current;
+    if (!track || !hlEl || !hrEl) return;
+
+    let activeSide: "l" | "r" | null = null;
+
+    const startDrag = (side: "l" | "r") => (e: PointerEvent) => {
+      e.preventDefault();
+      activeSide = side;
+      track.setPointerCapture(e.pointerId);
+    };
+
+    track.addEventListener("pointermove", (e: PointerEvent) => {
+      if (!activeSide || !S.current.data.length) return;
+      const rect = track.getBoundingClientRect();
+      const pos  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const min  = 1 / Math.max(S.current.data.length, 1);
+      if (activeSide === "l") S.current.brushL = Math.min(pos, S.current.brushR - min);
+      else                    S.current.brushR = Math.max(pos, S.current.brushL + min);
+      updateVisuals();
+      if (brushTimer.current) clearTimeout(brushTimer.current);
+      brushTimer.current = setTimeout(() => doBrushFetch(), 180);
     });
+
+    track.addEventListener("pointerup",     () => { activeSide = null; });
+    track.addEventListener("pointercancel", () => { activeSide = null; });
+
+    hlEl.addEventListener("pointerdown", startDrag("l"));
+    hrEl.addEventListener("pointerdown", startDrag("r"));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function initBrush() {

@@ -142,7 +142,7 @@ if [[ "$DEPLOY_MODE" == "lite" ]]; then
 else
   _GKE_EXISTS=$(gcloud container clusters describe "${GKE_CLUSTER:-dash-gke-cluster}" \
     --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
-  _CR_EXISTS=$(gcloud run services describe dash-frontend \
+  _CR_EXISTS=$(gcloud run services describe dash-react-full-frontend \
     --region "$GCP_REGION" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
   if [[ -n "$_GKE_EXISTS" ]]; then
     DEPLOY_TARGET="gke"
@@ -207,7 +207,7 @@ if [[ -z "$BACKEND_URL" ]]; then
 fi
 
 
-_FE_PREFIX=$([[ "$DEPLOY_MODE" == "lite" ]] && printf 'dash-lite' || printf 'dash')
+_FE_PREFIX=$([[ "$DEPLOY_MODE" == "lite" ]] && printf 'dash-react-lite' || printf 'dash-react-full')
 REGISTRY="${_FE_PREFIX}-frontend-repo"
 
 if ! gcloud artifacts repositories describe "$REGISTRY" \
@@ -397,13 +397,13 @@ PYEOF
   pulumi config set backendUrl    "$BACKEND_URL"
   pulumi config set frontendImage "$IMAGE"
   if [[ "$DEPLOY_MODE" == "lite" ]]; then
-    pulumi config set namePrefix       "dash-lite"
+    pulumi config set namePrefix       "dash-react-lite"
     pulumi config set minInstanceCount "0"
     pulumi config set maxInstanceCount "1"
     pulumi config set cpu              "1"
     pulumi config set memory           "512Mi"
   else
-    pulumi config set namePrefix       "dash"
+    pulumi config set namePrefix       "dash-react-full"
     pulumi config set minInstanceCount "1"
     pulumi config set maxInstanceCount "3"
     pulumi config set cpu              "1"

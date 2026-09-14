@@ -170,6 +170,7 @@ export default function SearchTable({
   const [dir, setDir] = useState<SortDir>("desc");
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [warmingUp, setWarmingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Row currently playing the new-order flash (cleared after the animation).
   const [flashId, setFlashId] = useState<string | number | null>(null);
@@ -426,6 +427,13 @@ export default function SearchTable({
     return () => abortRef.current?.abort();
   }, []);
 
+  useEffect(() => {
+    const isLoading = isControlled ? controlledLoading : loading;
+    if (!isLoading) { setWarmingUp(false); return; }
+    const t = setTimeout(() => setWarmingUp(true), 8000);
+    return () => clearTimeout(t);
+  }, [loading, controlledLoading, isControlled]);
+
   // When a new order event arrives (highlightKey bumps), flash its row once it
   // shows up in the freshly-fetched rows. The row may land a tick after the
   // event, so this also re-checks whenever `rows` updates.
@@ -581,11 +589,18 @@ export default function SearchTable({
                   aria-hidden
                   className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400"
                 />
-                <span className={searchLoading ? "animate-pulse" : undefined}>
-                  {(isControlled ? controlledLoading : searchLoading)
+                <span className={searchLoading && !warmingUp ? "animate-pulse" : undefined}>
+                  {warmingUp
+                    ? "Backend waking up…"
+                    : (isControlled ? controlledLoading : searchLoading)
                     ? "Searching…"
                     : "Loading…"}
                 </span>
+                {warmingUp && (
+                  <span className="text-xs text-gray-300 dark:text-gray-600 text-center">
+                    Cloud Run scales to zero when idle — first request takes ~30s
+                  </span>
+                )}
               </>
             ) : (
               "No results."

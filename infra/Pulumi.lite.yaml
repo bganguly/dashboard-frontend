@@ -1,0 +1,10 @@
+config:
+  gcp:project: bikram-java
+  gcp:region: us-central1
+  dashboard-frontend:backendUrl: http://35.255.56.85
+  dashboard-frontend:frontendImage: us-central1-docker.pkg.dev/bikram-java/agent-demo/frontend:5cdffca087aa5c97
+  dashboard-frontend:namePrefix: dash-react-lite
+  dashboard-frontend:minInstanceCount: "0"
+  dashboard-frontend:maxInstanceCount: "1"
+  dashboard-frontend:cpu: "1"
+  dashboard-frontend:memory: 512Mi

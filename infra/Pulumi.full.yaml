@@ -1,0 +1,10 @@
+config:
+  gcp:project: bikram-java
+  gcp:region: us-central1
+  dashboard-frontend:backendUrl: https://dash-full-backend-77y7e2wykq-uc.a.run.app
+  dashboard-frontend:frontendImage: us-central1-docker.pkg.dev/bikram-java/dash-frontend-repo/frontend:703ea4500841cd60
+  dashboard-frontend:namePrefix: dash-react-full
+  dashboard-frontend:minInstanceCount: "1"
+  dashboard-frontend:maxInstanceCount: "3"
+  dashboard-frontend:cpu: "1"
+  dashboard-frontend:memory: 512Mi

@@ -52,6 +52,10 @@ interface SearchTableProps {
   externalTotal?: number | null;
   /** Called with the exact count once the background /count refine completes. */
   onRefinedCount?: (total: number) => void;
+  /** Gates the initial fetch — pass false to hold until the backend is confirmed ready. */
+  backendReady?: boolean;
+  /** Notifies parent when loading state changes. */
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 function cn(...classes: (string | false | undefined)[]): string {
@@ -150,6 +154,8 @@ export default function SearchTable({
   onRequestStateChange,
   externalTotal,
   onRefinedCount,
+  backendReady = true,
+  onLoadingChange,
 }: SearchTableProps) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -179,6 +185,11 @@ export default function SearchTable({
 
   const abortRef = useRef<AbortController | null>(null);
   const isControlled = onRequestStateChange != null;
+
+  const onLoadingChangeRef = useRef(onLoadingChange);
+  useEffect(() => { onLoadingChangeRef.current = onLoadingChange; }, [onLoadingChange]);
+  const effectiveLoading = isControlled ? controlledLoading : loading;
+  useEffect(() => { onLoadingChangeRef.current?.(effectiveLoading); }, [effectiveLoading]);
 
   // Latest onRows without making it a fetch dependency.
   const onRowsRef = useRef(onRows);
@@ -383,6 +394,7 @@ export default function SearchTable({
     // A cursor-based Prev/Next already fetched this page's data directly;
     // the setPage() it made to update the displayed page number would
     // otherwise re-trigger this effect and redo the fetch via plain OFFSET.
+    if (!backendReady) return;
     if (skipNextFetchRef.current) {
       skipNextFetchRef.current = false;
       return;
@@ -421,6 +433,7 @@ export default function SearchTable({
     fetchPage,
     isControlled,
     onRequestStateChange,
+    backendReady,
   ]);
 
   useEffect(() => {

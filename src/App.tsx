@@ -33,12 +33,15 @@ export default function App() {
   // Exact count from SearchTable's background /count refine — null until settled.
   const [exactCount, setExactCount] = useState<number | null>(null);
 
-  const [wakeStatus, setWakeStatus] = useState<"waking" | "ready" | null>(null);
+  const [backendReady, setBackendReady] = useState(false);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [wakeStatus, setWakeStatus] = useState<"waking" | "ready" | "resolving" | null>(null);
   const [wakeMs, setWakeMs] = useState(0);
   const wakeStart = useRef<number>(0);
   const wakeInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset both on every new search/filter so consumers show a skeleton.
   useEffect(() => { setChartTotal(null); setExactCount(null); }, [filters, searchQuery]);
@@ -53,27 +56,33 @@ export default function App() {
       }, 100);
     }, SLOW_WAKING_MS);
 
+    const markReady = () => {
+      if (slowTimer.current) { clearTimeout(slowTimer.current); slowTimer.current = null; }
+      if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
+      setBackendReady(true);
+      setWakeStatus((s) => (s === "waking" ? "ready" : null));
+      // transition to resolving after a brief "ready" flash, then children take over dismissal
+      readyTimer.current = setTimeout(() => setWakeStatus((s) => (s === "ready" ? "resolving" : s)), 600);
+    };
+
     fetch("/api/runtime")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: { runtime: string }) => {
-        setBackendRuntime(d.runtime);
-        if (slowTimer.current) { clearTimeout(slowTimer.current); slowTimer.current = null; }
-        if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
-        setWakeStatus((s) => (s === "waking" ? "ready" : null));
-        dismissTimer.current = setTimeout(() => setWakeStatus(null), 2500);
-      })
-      .catch(() => {
-        if (slowTimer.current) { clearTimeout(slowTimer.current); slowTimer.current = null; }
-        if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
-        setWakeStatus(null);
-      });
+      .then((d: { runtime: string }) => { setBackendRuntime(d.runtime); markReady(); })
+      .catch(() => { markReady(); });
 
     return () => {
       if (slowTimer.current) clearTimeout(slowTimer.current);
       if (wakeInterval.current) clearInterval(wakeInterval.current);
-      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+      if (readyTimer.current) clearTimeout(readyTimer.current);
     };
   }, []);
+
+  // Dismiss the banner once backend is ready and both children have finished loading.
+  useEffect(() => {
+    if (backendReady && !chartLoading && !tableLoading) {
+      setWakeStatus((s) => (s === "resolving" ? null : s));
+    }
+  }, [backendReady, chartLoading, tableLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,9 +134,9 @@ export default function App() {
             {wakeStatus && (
               <div
                 className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm"
-                style={wakeStatus === "waking"
-                  ? { background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.30)", color: "#fbbf24" }
-                  : { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.30)", color: "#4ade80" }}
+                style={wakeStatus === "ready"
+                  ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.30)", color: "#4ade80" }
+                  : { background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.30)", color: "#fbbf24" }}
               >
                 {wakeStatus === "waking" ? (
                   <>
@@ -137,12 +146,19 @@ export default function App() {
                     Backend waking up from idle —
                     <span className="ml-1 font-mono tabular-nums opacity-70">{(wakeMs / 1000).toFixed(1)}s</span>
                   </>
-                ) : (
+                ) : wakeStatus === "ready" ? (
                   <>
                     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                     Backend ready
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="20" />
+                    </svg>
+                    Backend resolving request…
                   </>
                 )}
               </div>
@@ -153,8 +169,8 @@ export default function App() {
         <div className="flex flex-col gap-6 lg:flex-row">
           <FilterSidebar value={filters} onChange={setFilters} regionOptions={regionOptions} />
           <div className="min-w-0 flex-1 grid grid-cols-1 gap-6">
-            <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} />
-            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} />
+            <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} backendReady={backendReady} onLoadingChange={setChartLoading} />
+            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} backendReady={backendReady} onLoadingChange={setTableLoading} />
           </div>
         </div>
       </main>

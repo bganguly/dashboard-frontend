@@ -63,9 +63,9 @@ function compactBrushDate(value: string) {
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
 function defaultRange() { return { from: "2020-01-01", to: isoDay(new Date()) }; }
 
-interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; onTotalChange?: (n: number) => void; overrideTotal?: number | null; }
+interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; onTotalChange?: (n: number) => void; overrideTotal?: number | null; backendReady?: boolean; onLoadingChange?: (loading: boolean) => void; }
 
-export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange, onTotalChange, overrideTotal }: ChartProps) {
+export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP_N, filters, searchQuery, onRangeChange, onTotalChange, overrideTotal, backendReady = true, onLoadingChange }: ChartProps) {
   const [rawData, setRawData] = useState<RawAggregate[]>([]);
   const [range, setRange] = useState(defaultRange);
   const onTotalChangeRef = useRef(onTotalChange);
@@ -114,16 +114,21 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   // filters (onRangeChange), a stale range.to left behind after the filter
   // was cleared would otherwise keep silently narrowing every refetch via
   // fetchAggregates' `filters?.to || to` fallback forever.
+  const onLoadingChangeRef = useRef(onLoadingChange);
+  useEffect(() => { onLoadingChangeRef.current = onLoadingChange; }, [onLoadingChange]);
+  useEffect(() => { onLoadingChangeRef.current?.(loading); }, [loading]);
+
   useEffect(() => {
     const from = filters?.from || defaultRange().from;
     const to = filters?.to || defaultRange().to;
     setRange({ from, to });
+    if (!backendReady) return;
     // Reset dedup key so a new closure (searchQuery/filters changed) always
     // fires a fresh request even if the resulting URL matches a prior one.
     lastRequestKeyRef.current = null;
     fetchAggregates(from, to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchAggregates, filters?.from, filters?.to]);
+  }, [fetchAggregates, filters?.from, filters?.to, backendReady]);
 
   useEffect(() => () => { abortRef.current?.abort(); lastRequestKeyRef.current = null; if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
 

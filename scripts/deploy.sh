@@ -41,7 +41,7 @@ printf '  [2] Lite   — GCP: Cloud Run (scales to zero, cold starts OK) ~400K o
 printf '\n'
 printf '  [3] Full   — GCP: Cloud Run (min 1 instance, always warm) ~4M orders'
 (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
-printf '               Full also unlocks GKE deployment.\n'
+printf '               GKE deployment available on request.\n'
 _MODE_FROM_ENV=0
 if [[ -n "${DEPLOY_MODE:-}" ]]; then
   _TARGET="remote"

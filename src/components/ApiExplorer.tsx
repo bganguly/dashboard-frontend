@@ -611,13 +611,7 @@ function BrushCard() {
 
     let activeSide: "l" | "r" | null = null;
 
-    const startDrag = (side: "l" | "r") => (e: PointerEvent) => {
-      e.preventDefault();
-      activeSide = side;
-      track.setPointerCapture(e.pointerId);
-    };
-
-    track.addEventListener("pointermove", (e: PointerEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!activeSide || !S.current.data.length) return;
       const rect = track.getBoundingClientRect();
       const pos  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -627,13 +621,15 @@ function BrushCard() {
       updateVisuals();
       if (brushTimer.current) clearTimeout(brushTimer.current);
       brushTimer.current = setTimeout(() => doBrushFetch(), 180);
-    });
+    };
+    const onUp = () => { activeSide = null; };
 
-    track.addEventListener("pointerup",     () => { activeSide = null; });
-    track.addEventListener("pointercancel", () => { activeSide = null; });
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup",     onUp);
+    window.addEventListener("pointercancel", onUp);
 
-    hlEl.addEventListener("pointerdown", startDrag("l"));
-    hrEl.addEventListener("pointerdown", startDrag("r"));
+    hlEl.addEventListener("pointerdown", (e) => { e.preventDefault(); activeSide = "l"; });
+    hrEl.addEventListener("pointerdown", (e) => { e.preventDefault(); activeSide = "r"; });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function initBrush() {

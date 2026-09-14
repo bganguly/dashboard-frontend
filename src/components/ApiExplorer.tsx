@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -544,93 +544,38 @@ function RegionsCard() {
 // ── Brush card ────────────────────────────────────────────────────────────────
 
 interface DayRow { date: string; categories: Record<string, { totalOrders?: number; totalRevenue?: number }> }
-interface BrushState { data: DayRow[]; brushL: number; brushR: number; res: (RunResult & { from: string; to: string }) | null; fetching: boolean }
 
 function BrushCard() {
-  const S = useRef<BrushState>({ data: [], brushL: 0, brushR: 1, res: null, fetching: false });
-  const brushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [phase, setPhase] = useState<"idle" | "loading" | "ready">("idle");
-  const [tick, setTick] = useState(0);
-  const svgRef  = useRef<SVGSVGElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const fillRef  = useRef<HTMLDivElement>(null);
-  const hlRef    = useRef<HTMLDivElement>(null);
-  const hrRef    = useRef<HTMLDivElement>(null);
-  const dlRef    = useRef<HTMLSpanElement>(null);
-  const drRef    = useRef<HTMLSpanElement>(null);
+  const [phase, setPhase]     = useState<"idle" | "loading" | "ready">("idle");
+  const [brushData, setBD]    = useState<DayRow[]>([]);
+  const [brushL, setBL]       = useState(0);
+  const [brushR, setBR]       = useState(1);
+  const [brushRes, setBRes]   = useState<(RunResult & { from: string; to: string }) | null>(null);
+  const [fetching, setFetch]  = useState(false);
 
-  function buildBars() {
-    if (!svgRef.current) return;
-    const { data } = S.current;
-    const n = data.length;
-    const totals = data.map(d => Object.values(d.categories || {}).reduce((s, c) => s + (c.totalOrders || 0), 0));
-    const mx = Math.max(...totals, 1);
-    svgRef.current.innerHTML = totals.map((v, i) => {
-      const x = (i / n) * 600, bw = 600 / n, h = Math.max(2, (v / mx) * 76);
-      return `<rect id="bb-${i}" x="${x.toFixed(2)}" y="${(80 - h).toFixed(2)}" width="${(bw - 0.4).toFixed(2)}" height="${h.toFixed(2)}" fill="#1e293b" rx="1"/>`;
-    }).join("");
-  }
+  const trackRef  = useRef<HTMLDivElement>(null);
+  const brushLRef = useRef(0);
+  const brushRRef = useRef(1);
+  const brushDRef = useRef<DayRow[]>([]);
+  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function updateVisuals() {
-    const { data, brushL, brushR } = S.current;
-    const n = data.length;
-    const li = Math.round(brushL * (n - 1)), ri = Math.round(brushR * (n - 1));
-    if (svgRef.current) {
-      for (let i = 0; i < n; i++) {
-        const bar = svgRef.current.querySelector(`#bb-${i}`);
-        if (bar) bar.setAttribute("fill", (i >= li && i <= ri) ? "#818cf8" : "#1e293b");
-      }
-    }
-    if (fillRef.current) { fillRef.current.style.left = `${brushL * 100}%`; fillRef.current.style.width = `${(brushR - brushL) * 100}%`; }
-    if (hlRef.current)   hlRef.current.style.left = `${brushL * 100}%`;
-    if (hrRef.current)   hrRef.current.style.left = `${brushR * 100}%`;
-    if (dlRef.current)   dlRef.current.textContent = data[li]?.date || "";
-    if (drRef.current)   drRef.current.textContent = data[ri]?.date || "";
-  }
+  // Keep refs in sync with state so pointer-event closures are never stale
+  brushLRef.current = brushL;
+  brushRRef.current = brushR;
+  brushDRef.current = brushData;
 
-  async function doBrushFetch() {
-    const { data, brushL, brushR } = S.current;
-    const n = data.length;
-    if (!n) return;
-    const li = Math.round(brushL * (n - 1)), ri = Math.round(brushR * (n - 1));
+  async function doFetch(l: number, r: number) {
+    const data = brushDRef.current;
+    if (!data.length) return;
+    const li = Math.round(l * (data.length - 1)), ri = Math.round(r * (data.length - 1));
     const from = data[li]?.date, to = data[ri]?.date;
     if (!from || !to) return;
-    S.current.fetching = true; setTick(t => t + 1);
+    setFetch(true);
     try {
-      const r = await fetchTimed(`/api/aggregates?from=${from}&to=${to}&topCategories=1`);
-      S.current.res = { ...r, from, to };
-    } catch { }
-    S.current.fetching = false; setTick(t => t + 1);
+      const r2 = await fetchTimed(`/api/aggregates?from=${from}&to=${to}&topCategories=1`);
+      setBRes({ ...r2, from, to });
+    } catch {} finally { setFetch(false); }
   }
-
-  const attachHandlers = useCallback(() => {
-    const track = trackRef.current;
-    const hlEl  = hlRef.current;
-    const hrEl  = hrRef.current;
-    if (!track || !hlEl || !hrEl) return;
-
-    let activeSide: "l" | "r" | null = null;
-
-    const onMove = (e: PointerEvent) => {
-      if (!activeSide || !S.current.data.length) return;
-      const rect = track.getBoundingClientRect();
-      const pos  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const min  = 1 / Math.max(S.current.data.length, 1);
-      if (activeSide === "l") S.current.brushL = Math.min(pos, S.current.brushR - min);
-      else                    S.current.brushR = Math.max(pos, S.current.brushL + min);
-      updateVisuals();
-      if (brushTimer.current) clearTimeout(brushTimer.current);
-      brushTimer.current = setTimeout(() => doBrushFetch(), 180);
-    };
-    const onUp = () => { activeSide = null; };
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup",     onUp);
-    window.addEventListener("pointercancel", onUp);
-
-    hlEl.addEventListener("pointerdown", (e) => { e.preventDefault(); activeSide = "l"; });
-    hrEl.addEventListener("pointerdown", (e) => { e.preventDefault(); activeSide = "r"; });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function initBrush() {
     setPhase("loading");
@@ -639,21 +584,45 @@ function BrushCard() {
     try {
       const { json, ms } = await fetchTimed(`/api/aggregates?from=${ago}&to=${today}&topCategories=1`);
       const raw  = (json as { data?: DayRow[] })?.data ?? (json as DayRow[]);
-      const data = Array.isArray(raw) ? raw : [];
+      const data = Array.isArray(raw) ? raw as DayRow[] : [];
       if (!data.length) throw new Error("no data");
-      S.current = { data, brushL: 0, brushR: 1, fetching: false,
-        res: { json, ms, from: data[0].date, to: data[data.length - 1].date } };
-      setPhase("ready");
-      setTimeout(() => { buildBars(); updateVisuals(); attachHandlers(); setTick(t => t + 1); }, 0);
-    } catch {
-      setPhase("idle");
-    }
+      setBD(data); setBL(0); setBR(1); setPhase("ready");
+      setBRes({ json, ms, from: data[0].date, to: data[data.length - 1].date });
+    } catch { setPhase("idle"); }
   }
 
-  const res = S.current.res;
-  const resRaw  = res ? (Array.isArray(res.json) ? res.json : ((res.json as { data?: DayRow[] })?.data ?? [])) as DayRow[] : [];
+  function makeDrag(side: "l" | "r") {
+    return {
+      onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+        if (!brushDRef.current.length || !trackRef.current) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+      },
+      onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+        if (!e.currentTarget.hasPointerCapture(e.pointerId) || !trackRef.current) return;
+        const rect = trackRef.current.getBoundingClientRect();
+        const pos  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const min  = 1 / Math.max(brushDRef.current.length, 1);
+        if (side === "l") { const v = Math.min(pos, brushRRef.current - min); brushLRef.current = v; setBL(v); }
+        else              { const v = Math.max(pos, brushLRef.current + min); brushRRef.current = v; setBR(v); }
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => doFetch(brushLRef.current, brushRRef.current), 180);
+      },
+      onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      },
+    };
+  }
+
+  const totals = brushData.map(d => Object.values(d.categories || {}).reduce((s, c) => s + (c.totalOrders || 0), 0));
+  const mx     = Math.max(...totals, 1);
+  const n      = brushData.length;
+  const [li, ri] = n ? [Math.round(brushL * (n - 1)), Math.round(brushR * (n - 1))] : [0, 0];
+
+  const bRaw  = brushRes ? ((brushRes.json as { data?: DayRow[] })?.data ?? brushRes.json) : null;
+  const bRows = Array.isArray(bRaw) ? bRaw as DayRow[] : [];
   let bOrders = 0, bRevenue = 0;
-  resRaw.forEach(d => Object.values(d.categories || {}).forEach(c => { bOrders += c.totalOrders || 0; bRevenue += c.totalRevenue || 0; }));
+  bRows.forEach(d => Object.values(d.categories || {}).forEach(c => { bOrders += c.totalOrders || 0; bRevenue += c.totalRevenue || 0; }));
 
   return (
     <Card path="/api/aggregates?from=…&to=…" subtitle="Drag brush handles · sub-second re-fetch">
@@ -671,35 +640,46 @@ function BrushCard() {
       )}
       {phase === "ready" && (
         <div style={{ marginTop: "1rem" }}>
-          <svg ref={svgRef} viewBox="0 0 600 80" width="100%" height="80"
-            preserveAspectRatio="none"
-            style={{ display: "block", borderRadius: "6px", marginBottom: "0.5rem" }} />
+          <svg viewBox="0 0 600 80" width="100%" height="80" preserveAspectRatio="none"
+            style={{ display: "block", borderRadius: "6px", marginBottom: "0.5rem" }}>
+            {totals.map((v, i) => {
+              const x = (i / n) * 600, bw = 600 / n, h = Math.max(2, (v / mx) * 76);
+              return <rect key={i} x={x.toFixed(2)} y={(80 - h).toFixed(2)}
+                width={(bw - 0.4).toFixed(2)} height={h.toFixed(2)}
+                fill={i >= li && i <= ri ? "#818cf8" : "#1e293b"} rx="1" />;
+            })}
+          </svg>
           <div ref={trackRef} style={{ position: "relative", height: "20px", marginTop: "8px",
-            background: "rgba(255,255,255,0.04)", borderRadius: "10px", userSelect: "none" }}>
-            <div ref={fillRef} style={{ position: "absolute", top: 0, height: "100%", left: "0%", width: "100%",
+            background: "rgba(255,255,255,0.04)", borderRadius: "10px",
+            cursor: "crosshair", userSelect: "none" }}>
+            <div style={{ position: "absolute", top: 0, height: "100%",
+              left: `${brushL * 100}%`, width: `${(brushR - brushL) * 100}%`,
               background: "rgba(129,140,248,0.18)", border: "1px solid rgba(129,140,248,0.45)",
               borderRadius: "10px", pointerEvents: "none" }} />
-            <div ref={hlRef} style={{ position: "absolute", top: "50%", left: "0%",
-              transform: "translate(-50%,-50%)", width: "10px", height: "22px", background: "#818cf8",
-              borderRadius: "3px", cursor: "ew-resize", touchAction: "none", zIndex: 2 }} />
-            <div ref={hrRef} style={{ position: "absolute", top: "50%", left: "100%",
-              transform: "translate(-50%,-50%)", width: "10px", height: "22px", background: "#818cf8",
-              borderRadius: "3px", cursor: "ew-resize", touchAction: "none", zIndex: 2 }} />
+            {(["l", "r"] as const).map(side => (
+              <div key={side} {...makeDrag(side)} style={{
+                position: "absolute", top: "50%",
+                left: `${(side === "l" ? brushL : brushR) * 100}%`,
+                transform: "translate(-50%,-50%)", width: "10px", height: "22px",
+                background: "#818cf8", borderRadius: "3px", cursor: "ew-resize",
+                touchAction: "none", zIndex: 2,
+              }} />
+            ))}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
-            <span ref={dlRef} style={{ fontSize: "0.625rem", fontFamily: "monospace", color: "#52525b" }} />
-            <span ref={drRef} style={{ fontSize: "0.625rem", fontFamily: "monospace", color: "#52525b" }} />
+            <span style={{ fontSize: "0.625rem", fontFamily: "monospace", color: "#52525b" }}>{brushData[li]?.date}</span>
+            <span style={{ fontSize: "0.625rem", fontFamily: "monospace", color: "#52525b" }}>{brushData[ri]?.date}</span>
           </div>
           <div style={{ marginTop: "1rem" }}>
-            {S.current.fetching
+            {fetching
               ? <LoadingRow />
-              : res && (
+              : brushRes && (
                 <>
-                  <MetaBar ms={res.ms} label={`${resRaw.length} day${resRaw.length !== 1 ? "s" : ""} · ${res.from} → ${res.to}`} />
+                  <MetaBar ms={brushRes.ms} label={`${bRows.length} day${bRows.length !== 1 ? "s" : ""} · ${brushRes.from} → ${brushRes.to}`} />
                   <StatGrid stats={[
                     { label: "Orders",        value: bOrders.toLocaleString() },
                     { label: "Est. Revenue",  value: "$" + bRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 }), color: "#34d399" },
-                    { label: "Days in range", value: String(resRaw.length) },
+                    { label: "Days in range", value: String(bRows.length) },
                   ]} />
                 </>
               )

@@ -535,7 +535,7 @@ export default function SearchTable({
   const footerLoading = isControlled ? controlledLoading : searchLoading;
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="mb-4 flex items-center gap-3">
         <h2 className="text-xl font-semibold">Search orders</h2>
         {(isControlled ? controlledLoading : loading) && (
@@ -586,7 +586,7 @@ export default function SearchTable({
         </p>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ minHeight: (pageSize + 1) * 41 }}>
         {error ? (
           <div className="py-10 text-center text-sm text-red-500">
             Search failed: {error}

@@ -21,14 +21,13 @@ const frontendService = new gcp.cloudrunv2.Service("frontend", {
     containers: [{
       image: frontendImage,
       ports: [{ containerPort: 80 }],
-      resources: { limits: { cpu, memory } },
+      resources: { limits: { cpu, memory }, cpuIdle: true },
       envs: [{
         name: "BACKEND_URL",
         value: backendUrl,
       }],
     }],
     scaling: { minInstanceCount, maxInstanceCount },
-    cpuThrottling: true,
   },
   traffics: [{ type: "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST", percent: 100 }],
 });

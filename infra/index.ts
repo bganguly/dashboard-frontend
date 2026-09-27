@@ -21,7 +21,7 @@ const frontendService = new gcp.cloudrunv2.Service("frontend", {
     containers: [{
       image: frontendImage,
       ports: [{ containerPort: 80 }],
-      resources: { limits: { cpu, memory }, cpuIdle: true },
+      resources: { limits: { cpu, memory }, cpuIdle: true, startupCpuBoost: true },
       envs: [{
         name: "BACKEND_URL",
         value: backendUrl,

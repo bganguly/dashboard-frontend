@@ -28,6 +28,7 @@ const frontendService = new gcp.cloudrunv2.Service("frontend", {
       }],
     }],
     scaling: { minInstanceCount, maxInstanceCount },
+    cpuThrottling: true,
   },
   traffics: [{ type: "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST", percent: 100 }],
 });

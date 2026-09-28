@@ -163,6 +163,9 @@ GKE_CLUSTER="${GKE_CLUSTER:-dash-gke-cluster}"
 K8S_NAMESPACE="dash"
 
 BACKEND_URL="${BACKEND_URL:-}"
+if [[ "$DEPLOY_MODE" == "angular" && -z "$BACKEND_URL" ]]; then
+  BACKEND_URL="https://dash-full-backend-77y7e2wykq-uc.a.run.app"
+fi
 if [[ -z "$BACKEND_URL" ]]; then
 if [[ "$DEPLOY_TARGET" == "gke" ]]; then
   GKE_ZONE="${GCP_REGION}-a"

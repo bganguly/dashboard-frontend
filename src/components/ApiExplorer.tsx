@@ -752,7 +752,14 @@ export default function ApiExplorer() {
         background: "rgba(15,15,19,0.9)", backdropFilter: "blur(16px)" }}>
         <div style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1.5rem",
           height: "3.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <a href="https://bganguly.github.io/?open=orders_dashboard"
+          <a href={`https://bganguly.github.io/?open=${new URLSearchParams(window.location.search).get('returnTo') || 'orders_dashboard'}`}
+            onClick={e => {
+              e.preventDefault();
+              const key = new URLSearchParams(window.location.search).get('returnTo') || 'orders_dashboard';
+              const url = `https://bganguly.github.io/?open=${key}`;
+              try { if (window.opener && !window.opener.closed) { window.opener.location.href = url; window.close(); return; } } catch (_) {}
+              window.location.href = url;
+            }}
             style={{ display: "flex", alignItems: "center", gap: "0.5rem",
               color: "#71717a", textDecoration: "none", fontSize: "0.875rem" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

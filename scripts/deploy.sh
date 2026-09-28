@@ -42,18 +42,20 @@ printf '\n'
 printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders'
 (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
 printf '               Cloud Run deployment; GKE available on request.\n'
+printf '  [4] Angular — GCP: Cloud Run for Angular+Spring Boot card (dash-angular-frontend)\n'
 _MODE_FROM_ENV=0
 if [[ -n "${DEPLOY_MODE:-}" ]]; then
   _TARGET="remote"
   _MODE_FROM_ENV=1
   printf '\n  (DEPLOY_MODE=%s — skipping menu)\n' "$DEPLOY_MODE"
 else
-  printf '\nChoice [1/2/3, default 3]: '
+  printf '\nChoice [1/2/3/4, default 3]: '
   read -r _MODE
   case "$_MODE" in
-    1) _TARGET="local";  DEPLOY_MODE=""    ;;
-    2) _TARGET="remote"; DEPLOY_MODE="lite" ;;
-    *) _TARGET="remote"; DEPLOY_MODE="full" ;;
+    1) _TARGET="local";  DEPLOY_MODE=""       ;;
+    2) _TARGET="remote"; DEPLOY_MODE="lite"    ;;
+    4) _TARGET="remote"; DEPLOY_MODE="angular" ;;
+    *) _TARGET="remote"; DEPLOY_MODE="full"    ;;
   esac
 fi
 
@@ -393,6 +395,12 @@ PYEOF
   pulumi config set frontendImage "$IMAGE"
   if [[ "$DEPLOY_MODE" == "lite" ]]; then
     pulumi config set namePrefix       "dash-react-lite"
+    pulumi config set minInstanceCount "0"
+    pulumi config set maxInstanceCount "1"
+    pulumi config set cpu              "1"
+    pulumi config set memory           "512Mi"
+  elif [[ "$DEPLOY_MODE" == "angular" ]]; then
+    pulumi config set namePrefix       "dash-angular"
     pulumi config set minInstanceCount "0"
     pulumi config set maxInstanceCount "1"
     pulumi config set cpu              "1"

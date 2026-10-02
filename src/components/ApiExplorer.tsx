@@ -11,11 +11,16 @@ interface RunResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+let lastApiSuccess = Date.now();
+const SLEEP_THRESHOLD_MS = 12 * 60 * 1000;
+function maybeAsleep() { return Date.now() - lastApiSuccess > SLEEP_THRESHOLD_MS; }
+
 async function fetchTimed(path: string): Promise<RunResult> {
   const t0 = performance.now();
   const res = await fetch(path);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const json = await res.json();
+  lastApiSuccess = Date.now();
   return { json, ms: Math.round(performance.now() - t0) };
 }
 
@@ -281,10 +286,12 @@ function ErrBox({ msg }: { msg: string }) {
   );
 }
 
-function LoadingRow() {
+function LoadingRow({ slow }: { slow?: boolean }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#52525b" }}>
-      <Spinner /> Sending request…
+    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem",
+      color: slow ? "#fbbf24" : "#52525b" }}>
+      <Spinner />
+      {slow ? "Backend may be waking up — first request could take a few seconds…" : "Sending request…"}
     </div>
   );
 }
@@ -293,16 +300,18 @@ function LoadingRow() {
 
 function OrdersCard() {
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow]       = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
-    setLoading(true); setErr(null); setResult(null);
+    const asleep = maybeAsleep();
+    setSlow(asleep); setLoading(true); setErr(null); setResult(null);
     try {
       const r = await fetchTimed("/api/orders?pageSize=10&sort=placedAt&dir=desc");
       setResult(r);
     } catch (e) { setErr(String(e)); }
-    setLoading(false);
+    setLoading(false); setSlow(false);
   }
 
   const json = result?.json as { data?: unknown[]; total?: number } | null;
@@ -319,7 +328,7 @@ function OrdersCard() {
         </div>
         <RunBtn onClick={run} loading={loading} />
       </div>
-      {loading && <LoadingRow />}
+      {loading && <LoadingRow slow={slow} />}
       {err && <ErrBox msg={err} />}
       {result && !loading && (
         <>
@@ -335,17 +344,19 @@ function OrdersCard() {
 function SearchCard() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow]       = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
     if (!q.trim()) return;
-    setLoading(true); setErr(null); setResult(null);
+    const asleep = maybeAsleep();
+    setSlow(asleep); setLoading(true); setErr(null); setResult(null);
     try {
       const r = await fetchTimed("/api/orders?q=" + encodeURIComponent(q.trim()) + "&pageSize=10");
       setResult(r);
     } catch (e) { setErr(String(e)); }
-    setLoading(false);
+    setLoading(false); setSlow(false);
   }
 
   const json = result?.json as { data?: unknown[]; total?: number } | null;
@@ -368,7 +379,7 @@ function SearchCard() {
         </div>
         <RunBtn onClick={run} loading={loading} />
       </div>
-      {loading && <LoadingRow />}
+      {loading && <LoadingRow slow={slow} />}
       {err && <ErrBox msg={err} />}
       {result && !loading && (
         <>
@@ -389,17 +400,19 @@ function AggregatesCard() {
   const [from, setFrom] = useState(ago60);
   const [to,   setTo]   = useState(today);
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow]       = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
     if (!from || !to) return;
-    setLoading(true); setErr(null); setResult(null);
+    const asleep = maybeAsleep();
+    setSlow(asleep); setLoading(true); setErr(null); setResult(null);
     try {
       const r = await fetchTimed(`/api/aggregates?from=${from}&to=${to}&topCategories=3`);
       setResult(r);
     } catch (e) { setErr(String(e)); }
-    setLoading(false);
+    setLoading(false); setSlow(false);
   }
 
   const json = result?.json as { data?: unknown[] } | unknown[] | null;
@@ -426,7 +439,7 @@ function AggregatesCard() {
         </div>
         <RunBtn onClick={run} loading={loading} />
       </div>
-      {loading && <LoadingRow />}
+      {loading && <LoadingRow slow={slow} />}
       {err && <ErrBox msg={err} />}
       {result && !loading && (
         <>
@@ -447,17 +460,19 @@ function AggregatesCard() {
 function CustomersCard() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow]       = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
-    setLoading(true); setErr(null); setResult(null);
+    const asleep = maybeAsleep();
+    setSlow(asleep); setLoading(true); setErr(null); setResult(null);
     try {
       const url = "/api/customers?limit=10" + (q.trim() ? "&q=" + encodeURIComponent(q.trim()) : "");
       const r = await fetchTimed(url);
       setResult(r);
     } catch (e) { setErr(String(e)); }
-    setLoading(false);
+    setLoading(false); setSlow(false);
   }
 
   const json = result?.json;
@@ -479,7 +494,7 @@ function CustomersCard() {
         </div>
         <RunBtn onClick={run} loading={loading} />
       </div>
-      {loading && <LoadingRow />}
+      {loading && <LoadingRow slow={slow} />}
       {err && <ErrBox msg={err} />}
       {result && !loading && (
         <>
@@ -496,14 +511,16 @@ function CustomersCard() {
 
 function RegionsCard() {
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow]       = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
-    setLoading(true); setErr(null); setResult(null);
+    const asleep = maybeAsleep();
+    setSlow(asleep); setLoading(true); setErr(null); setResult(null);
     try { setResult(await fetchTimed("/api/regions")); }
     catch (e) { setErr(String(e)); }
-    setLoading(false);
+    setLoading(false); setSlow(false);
   }
 
   const rows = Array.isArray(result?.json) ? result!.json as unknown[] : [];
@@ -514,7 +531,7 @@ function RegionsCard() {
         <p style={{ fontSize: ".6875rem", color: "#52525b" }}>Returns the full list of regions used for filtering.</p>
         <RunBtn onClick={run} loading={loading} />
       </div>
-      {loading && <LoadingRow />}
+      {loading && <LoadingRow slow={slow} />}
       {err && <ErrBox msg={err} />}
       {result && !loading && (
         <>
@@ -552,6 +569,7 @@ function BrushCard() {
   const [brushR, setBR]       = useState(1);
   const [brushRes, setBRes]   = useState<(RunResult & { from: string; to: string }) | null>(null);
   const [fetching, setFetch]  = useState(false);
+  const [slowBrush, setSlowBrush] = useState(false);
 
   const trackRef  = useRef<HTMLDivElement>(null);
   const brushLRef = useRef(0);
@@ -570,11 +588,12 @@ function BrushCard() {
     const li = Math.round(l * (data.length - 1)), ri = Math.round(r * (data.length - 1));
     const from = data[li]?.date, to = data[ri]?.date;
     if (!from || !to) return;
-    setFetch(true);
+    const asleep = maybeAsleep();
+    setSlowBrush(asleep); setFetch(true);
     try {
       const r2 = await fetchTimed(`/api/aggregates?from=${from}&to=${to}&topCategories=1`);
       setBRes({ ...r2, from, to });
-    } catch {} finally { setFetch(false); }
+    } catch {} finally { setFetch(false); setSlowBrush(false); }
   }
 
   async function initBrush() {
@@ -672,7 +691,7 @@ function BrushCard() {
           </div>
           <div style={{ marginTop: "1rem" }}>
             {fetching
-              ? <LoadingRow />
+              ? <LoadingRow slow={slowBrush} />
               : brushRes && (
                 <>
                   <MetaBar ms={brushRes.ms} label={`${bRows.length} day${bRows.length !== 1 ? "s" : ""} · ${brushRes.from} → ${brushRes.to}`} />

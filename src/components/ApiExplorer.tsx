@@ -771,11 +771,11 @@ export default function ApiExplorer() {
         background: "rgba(15,15,19,0.9)", backdropFilter: "blur(16px)" }}>
         <div style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1.5rem",
           height: "3.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <a href={`https://bganguly.github.io/?open=${new URLSearchParams(window.location.search).get('returnTo') || 'orders_dashboard'}`}
+          <a href={`https://bganguly.github.io/#${new URLSearchParams(window.location.search).get('returnTo') || 'orders_dashboard'}`}
             onClick={e => {
               e.preventDefault();
               const key = new URLSearchParams(window.location.search).get('returnTo') || 'orders_dashboard';
-              const url = `https://bganguly.github.io/?open=${key}`;
+              const url = `https://bganguly.github.io/#${key}`;
               try { if (window.opener && !window.opener.closed) { window.opener.location.href = url; window.close(); return; } } catch (_) {}
               window.location.href = url;
             }}

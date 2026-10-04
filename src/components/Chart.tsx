@@ -170,11 +170,12 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     const topSet = new Set(topCategories);
     const entries = topCategories.map(cat => ({ key: cat, orders: categoryTotals.find(c => c.category === cat)?.orders ?? 0 }));
     if (withOther) {
-      const othersEntry = categoryTotals.find(c => isOther(c.category));
-      entries.push({ key: OTHER_KEY, orders: othersEntry?.orders ?? 0 });
+      const topOrdersSum = entries.reduce((s, e) => s + e.orders, 0);
+      const othersOrders = Math.max(0, (apiTotal ?? summedCategoryOrders) - topOrdersSum);
+      entries.push({ key: OTHER_KEY, orders: othersOrders });
     }
     return entries.sort((a, b) => b.orders - a.orders);
-  }, [categoryTotals, topCategories, withOther]);
+  }, [categoryTotals, topCategories, withOther, apiTotal, summedCategoryOrders]);
 
   const seriesKeys = useMemo(() => seriesRanked.filter(s => showOthers || s.key !== OTHER_KEY).map(s => s.key), [seriesRanked, showOthers]);
   const colorMap   = useMemo(() => { const m = new Map<string,string>(); topCategories.forEach((c,i) => m.set(c, COLORS[i % COLORS.length])); return m; }, [topCategories]);

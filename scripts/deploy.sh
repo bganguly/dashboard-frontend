@@ -4,8 +4,28 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="$ROOT_DIR/infra"
 BACKEND_INFRA_DIR="$(cd "$ROOT_DIR/../springboot-dashboard-backend/infra" 2>/dev/null && pwd || true)"
+
+_TARGET=""
+DEPLOY_MODE=""
+DEPLOY_TARGET=""
 ENV_FILE=""
+FRONTEND_ENV_FILE=""
+GCP_PROJECT=""
+GCP_REGION=""
+ACTIVE_ACCOUNT=""
+BACKEND_URL=""
+FRONTEND_URL=""
+TAG=""
+IMAGE=""
+_FE_PREFIX=""
+REGISTRY=""
+GKE_CLUSTER="dash-gke-cluster"
+GKE_ZONE=""
+K8S_NAMESPACE="dash"
+
 cd "$ROOT_DIR"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 _pulumi_stack_count() {
   local stack="$1"
@@ -23,221 +43,14 @@ except Exception:
     print(0)
 " 2>/dev/null ) || printf '0'
 }
-_local_running=0
-_lite_count=0
-_full_count=0
-lsof -ti:3006 >/dev/null 2>&1 && _local_running=1 || true
-if command -v pulumi >/dev/null 2>&1 && pulumi whoami >/dev/null 2>&1; then
-  _lite_count=$(_pulumi_stack_count lite)
-  _full_count=$(_pulumi_stack_count full)
-fi
-
-printf '\n=== dashboard-frontend-gcp ===\n\n'
-printf '  [1] Local  — Vite dev server on localhost (no GCP cost)'
-(( _local_running )) && printf ' [running]' || printf ' [not detected]'
-printf '\n'
-printf '  [2] Lite   — GCP: Cloud Run (scales to zero, cold starts OK) ~400K orders'
-(( _lite_count > 0 )) && printf ' [%s resources active]' "$_lite_count" || printf ' [not deployed]'
-printf '\n'
-printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders'
-(( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
-printf '               Cloud Run deployment; GKE available on request.\n'
-printf '  [4] Angular — GCP: Cloud Run for Angular+Spring Boot card (dash-angular-frontend)\n'
-_MODE_FROM_ENV=0
-if [[ -n "${DEPLOY_MODE:-}" ]]; then
-  _TARGET="remote"
-  _MODE_FROM_ENV=1
-  printf '\n  (DEPLOY_MODE=%s — skipping menu)\n' "$DEPLOY_MODE"
-else
-  printf '\nChoice [1/2/3/4, default 4]: '
-  read -r _MODE
-  case "$_MODE" in
-    1) _TARGET="local";  DEPLOY_MODE=""       ;;
-    2) _TARGET="remote"; DEPLOY_MODE="lite"    ;;
-    3) _TARGET="remote"; DEPLOY_MODE="full"    ;;
-    *) _TARGET="remote"; DEPLOY_MODE="angular" ;;
-  esac
-fi
-
-if [[ "$_TARGET" == "remote" ]]; then
-  ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend-gcp/.env.gcp.${DEPLOY_MODE}"
-  FRONTEND_ENV_FILE="$ROOT_DIR/.env.gcp.${DEPLOY_MODE}"
-  [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
-
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LOCAL
-# ══════════════════════════════════════════════════════════════════════════════
-if [[ "$_TARGET" == "local" ]]; then
-
-  command -v node >/dev/null 2>&1 || { printf 'Node.js not found — install Node 20+\n' >&2; exit 1; }
-
-  printf '\nInstalling deps...\n'
-  npm install --prefer-offline 2>/dev/null || npm install
-
-  printf '\nFreeing port 3006...\n'
-  "$ROOT_DIR/scripts/free-port.sh" 3006
-
-  BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
-  printf 'Starting Vite dev server on :3006 (BACKEND_URL=%s)...\n' "$BACKEND_URL"
-  printf 'Override: BACKEND_URL=http://other-host:port ./scripts/deploy.sh\n\n'
-
-  BACKEND_URL="$BACKEND_URL" npm run dev
-
-  exit 0
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# REMOTE (GCP)
-# ══════════════════════════════════════════════════════════════════════════════
-
-if ! command -v gcloud >/dev/null 2>&1; then
-  printf '\ngcloud CLI not found.\n'
-  if command -v brew >/dev/null 2>&1; then
-    printf 'Installing via Homebrew...\n'
-    brew install --cask google-cloud-sdk
-    source "$(brew --prefix)/share/google-cloud-sdk/path.bash.inc" 2>/dev/null || true
-  else
-    printf 'Install it from: https://cloud.google.com/sdk/docs/install\nThen re-run this script.\n'
-    exit 1
-  fi
-fi
-
-ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
-if [[ -z "$ACTIVE_ACCOUNT" ]]; then
-  printf '\nNot authenticated — logging in...\n'
-  gcloud auth login
-  ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
-  [[ -n "$ACTIVE_ACCOUNT" ]] || { printf 'Login did not complete.\n' >&2; exit 1; }
-fi
-printf 'Auth: %s\n' "$ACTIVE_ACCOUNT"
-
-printf '\n=== deployment config ===\n'
-
-_CONFIG_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
-GCP_PROJECT="${_CONFIG_PROJECT:-${GCP_PROJECT:-}}"
-[[ -n "$GCP_PROJECT" ]] || { printf '\nNo GCP project detected. Run: gcloud config set project <id>\n' >&2; exit 1; }
-
-_CONFIG_REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
-GCP_REGION="${_CONFIG_REGION:-${GCP_REGION:-us-central1}}"
 
 _shasum() { shasum -a 256 "$@" 2>/dev/null || sha256sum "$@" 2>/dev/null; }
-DEMO_SCALE="$( [[ "$DEPLOY_MODE" == "full" ]] && printf '~4M demo orders' || printf '~500K demo orders' )"
-
-TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
-    "$ROOT_DIR/index.html" "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
-    -type f 2>/dev/null | sort | xargs cat 2>/dev/null \
-  | _shasum | cut -c1-16 || true)
-TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
-
-printf '  Project: %s  Region: %s\n' "$GCP_PROJECT" "$GCP_REGION"
-
-if [[ "$DEPLOY_MODE" == "lite" ]]; then
-  DEPLOY_TARGET="cloudrun"
-  printf '\n  [lite] Skipping GKE — deploying to Cloud Run.\n'
-else
-  _GKE_EXISTS=$(gcloud container clusters describe "${GKE_CLUSTER:-dash-gke-cluster}" \
-    --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
-  _CR_EXISTS=$(gcloud run services describe dash-react-frontend \
-    --region "$GCP_REGION" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
-  if [[ -n "$_GKE_EXISTS" ]]; then
-    DEPLOY_TARGET="gke"
-    printf '\n  GKE cluster detected — redeploying to GKE.\n'
-  elif [[ -n "$_CR_EXISTS" ]]; then
-    DEPLOY_TARGET="cloudrun"
-    printf '\n  Cloud Run service detected — redeploying to Cloud Run.\n'
-  else
-    printf '\n  No existing deployment detected.\n'
-    printf '  Continue to deploy to Cloud Run? [Y/n]: '
-    read -r _CHOICE
-    case "${_CHOICE:-Y}" in
-      [nN]*) DEPLOY_TARGET="gke" ;;
-      *)     DEPLOY_TARGET="cloudrun" ;;
-    esac
-    printf '\n  Target: %s\n' "$DEPLOY_TARGET"
-  fi
-fi
-
-GKE_CLUSTER="${GKE_CLUSTER:-dash-gke-cluster}"
-K8S_NAMESPACE="dash"
-
-BACKEND_URL="${BACKEND_URL:-}"
-if [[ "$DEPLOY_MODE" == "angular" && -z "$BACKEND_URL" ]]; then
-  BACKEND_URL="https://dash-full-backend-77y7e2wykq-uc.a.run.app"
-fi
-if [[ -z "$BACKEND_URL" ]]; then
-if [[ "$DEPLOY_TARGET" == "gke" ]]; then
-  GKE_ZONE="${GCP_REGION}-a"
-  if ! command -v kubectl >/dev/null 2>&1; then
-    printf '  kubectl not found — installing via gcloud components...\n'
-    gcloud components install kubectl --quiet
-  fi
-  _SDK_BIN="$(gcloud info --format='value(installation.sdk_root)')/bin"
-  export PATH="${_SDK_BIN}:${PATH}"
-  gcloud container clusters get-credentials "$GKE_CLUSTER" \
-    --zone "$GKE_ZONE" --project "$GCP_PROJECT"
-  _IP=$(kubectl get ingress dash-backend -n "$K8S_NAMESPACE" \
-    -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-  [[ -n "$_IP" ]] && BACKEND_URL="http://${_IP}"
-else
-  if [[ -n "$BACKEND_INFRA_DIR" && -d "$BACKEND_INFRA_DIR" ]] && command -v pulumi >/dev/null 2>&1; then
-    BACKEND_URL=$(cd "$BACKEND_INFRA_DIR" && \
-      pulumi stack select "$DEPLOY_MODE" 2>/dev/null && \
-      pulumi stack output backendUrl 2>/dev/null || true)
-  fi
-  if [[ -z "$BACKEND_URL" ]]; then
-    _LB_NS="${DEPLOY_MODE_PREFIX:-dash-lite}"
-    _SDK_BIN="$(gcloud info --format='value(installation.sdk_root)')/bin"
-    export PATH="${_SDK_BIN}:${PATH}"
-    gcloud container clusters get-credentials "${_LB_NS}-cluster" \
-      --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --quiet 2>/dev/null || true
-    _IP=$(kubectl get svc "${_LB_NS}-backend" -n "${_LB_NS}" \
-      -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-    [[ -n "$_IP" ]] && BACKEND_URL="http://${_IP}"
-  fi
-fi
-fi
-if [[ -z "$BACKEND_URL" ]]; then
-  printf '\nCould not resolve backend URL automatically.\n'
-  printf 'Enter backend URL (or press Enter to abort): '
-  read -r _MANUAL_URL
-  [[ -n "$_MANUAL_URL" ]] || { printf 'Aborted.\n'; exit 1; }
-  BACKEND_URL="$_MANUAL_URL"
-fi
-
-
-_FE_PREFIX=$([[ "$DEPLOY_MODE" == "lite" ]] && printf 'dash-react-lite' || printf 'dash-react')
-REGISTRY="${_FE_PREFIX}-frontend-repo"
-
-if ! gcloud artifacts repositories describe "$REGISTRY" \
-      --project="$GCP_PROJECT" --location="$GCP_REGION" >/dev/null 2>&1; then
-  printf '  Creating repo "%s"...\n' "$REGISTRY"
-  gcloud artifacts repositories create "$REGISTRY" \
-    --repository-format=docker \
-    --location="$GCP_REGION" \
-    --project="$GCP_PROJECT"
-fi
-
-IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend:${TAG}"
-
-_IMG_EXISTS=$(gcloud artifacts docker tags list \
-  "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend" \
-  --filter="tag=${TAG}" \
-  --format="value(tag)" \
-  --project "$GCP_PROJECT" 2>/dev/null | head -1 || true)
-
-printf 'VITE_DEMO_SCALE=%s\n' "$DEMO_SCALE" > "$ROOT_DIR/.env.production"
-
-if [[ -n "$_IMG_EXISTS" ]]; then
-  printf '  Image %s exists — skipping build.\n' "$TAG"
-else
-  printf 'Building: %s\n' "$IMAGE"
 
 _cloudbuild_submit() {
   local tag="$1" project="$2" srcdir="$3"
   gcloud services enable cloudbuild.googleapis.com --project "$project"
 
+  local _CB_ROLE
   _CB_ROLE=$(gcloud projects get-iam-policy "$project" \
     --flatten="bindings[].members" \
     --filter="bindings.members:user:${ACTIVE_ACCOUNT} AND (bindings.role:roles/cloudbuild OR bindings.role:roles/owner OR bindings.role:roles/editor)" \
@@ -249,7 +62,7 @@ _cloudbuild_submit() {
       --role="roles/cloudbuild.builds.editor" --quiet
   fi
 
-  local cache_tag tmpyaml
+  local cache_tag tmpyaml attempt rc
   cache_tag="${tag%:*}:cache"
   tmpyaml=$(mktemp /tmp/cloudbuild.XXXXXX)
   cat > "$tmpyaml" <<YAML
@@ -269,7 +82,7 @@ images:
 - '${tag}'
 - '${cache_tag}'
 YAML
-  local attempt=0 rc
+  attempt=0 rc=0
   while (( attempt < 3 )); do
     attempt=$(( attempt + 1 ))
     set +e; gcloud builds submit --config "$tmpyaml" --project "$project" "$srcdir"; rc=$?; set -e
@@ -282,70 +95,21 @@ YAML
   return 1
 }
 
-if docker info >/dev/null 2>&1; then
-  gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-  docker build --platform linux/amd64 -t "$IMAGE" "$ROOT_DIR"
-  docker push "$IMAGE"
-else
-  _cloudbuild_submit "$IMAGE" "$GCP_PROJECT" "$ROOT_DIR"
-fi
-fi
-rm -f "$ROOT_DIR/.env.production"
+_pulumi_up_robust() {
+  local log_file attempt rc conflicts
+  log_file="$(mktemp)"
+  attempt=0 rc=0
 
-if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
-  printf 'Setting up ADC (required by Pulumi)...\n'
-  gcloud auth application-default login
-fi
+  while (( attempt < 5 )); do
+    attempt=$(( attempt + 1 ))
+    set +e
+    pulumi up --yes 2>&1 | tee "$log_file"
+    rc="${PIPESTATUS[0]}"
+    set -e
 
+    [[ "$rc" == "0" ]] && { rm -f "$log_file"; return 0; }
 
-if [[ "$DEPLOY_TARGET" == "gke" ]]; then
-  printf '\n=== deploying to GKE via Cloud Build ===\n'
-  printf '  Cluster: %s  Region: %s\n' "$GKE_CLUSTER" "$GCP_REGION"
-
-  gcloud services enable cloudbuild.googleapis.com container.googleapis.com \
-    --project "$GCP_PROJECT" --quiet
-
-  gcloud builds submit "$ROOT_DIR/k8s" \
-    --config "$ROOT_DIR/cloudbuild-gke.yaml" \
-    --substitutions "_IMAGE=${IMAGE},_BACKEND_URL=${BACKEND_URL},_CLUSTER=${GKE_CLUSTER},_ZONE=${GKE_ZONE},_NAMESPACE=${K8S_NAMESPACE}" \
-    --project "$GCP_PROJECT"
-
-  FRONTEND_URL="<check GKE ingress — see Cloud Build output above>"
-  printf '\nDone. Check ingress IP in Cloud Build output above.\n'
-else
-  if [[ -n "$_IMG_EXISTS" ]]; then
-    _DEPLOYED_IMG=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
-      --region "$GCP_REGION" --project "$GCP_PROJECT" \
-      --format="value(spec.template.spec.containers[0].image)" 2>/dev/null || true)
-    if [[ "$_DEPLOYED_IMG" == "$IMAGE" ]]; then
-      printf '  Cloud Run already serving %s — skipping Pulumi.\n' "$TAG"
-      FRONTEND_URL=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
-        --region "$GCP_REGION" --project "$GCP_PROJECT" \
-        --format="value(status.url)" 2>/dev/null || true)
-      printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "${FRONTEND_URL:-}" > "$FRONTEND_ENV_FILE"
-      printf '\nFrontend unchanged. URL:\n  %s\n' "${FRONTEND_URL:-}"
-      exit 0
-    fi
-  fi
-
-  printf '\n=== deploying via Pulumi ===\n'
-
-  _pulumi_up_robust() {
-    local log_file
-    log_file="$(mktemp)"
-    local attempt=0 rc
-
-    while (( attempt < 5 )); do
-      attempt=$(( attempt + 1 ))
-      set +e
-      pulumi up --yes 2>&1 | tee "$log_file"
-      rc="${PIPESTATUS[0]}"
-      set -e
-
-      [[ "$rc" == "0" ]] && { rm -f "$log_file"; return 0; }
-
-      local conflicts
-      conflicts=$(python3 - "${log_file}" <<'PYEOF'
+    conflicts=$(python3 - "${log_file}" <<'PYEOF'
 import re, sys
 content = open(sys.argv[1]).read()
 lines = content.split('\n')
@@ -364,30 +128,321 @@ for i, line in enumerate(lines):
                     print(key)
                 break
 PYEOF
-      2>/dev/null || true)
+    2>/dev/null || true)
 
-      if [[ -z "$conflicts" ]]; then
-        rm -f "$log_file"
-        printf '[deploy] pulumi up failed with no importable conflicts — cannot auto-recover.\n' >&2
-        return 1
-      fi
+    if [[ -z "$conflicts" ]]; then
+      rm -f "$log_file"
+      printf '[deploy] pulumi up failed with no importable conflicts — cannot auto-recover.\n' >&2
+      return 1
+    fi
 
-      printf '[deploy] Auto-importing conflicting resources (attempt %d)...\n' "$attempt"
-      while IFS='|' read -r type_display logical_name gcp_id; do
-        [[ -z "$type_display" ]] && continue
-        local module type_name import_type
-        module=$(printf '%s' "$type_display" | cut -d: -f2)
-        type_name=$(printf '%s' "$type_display" | cut -d: -f3)
-        import_type="gcp:${module}/${type_name,}:${type_name}"
-        printf '  importing: %s %s = %s\n' "$import_type" "$logical_name" "$gcp_id"
-        pulumi import "$import_type" "$logical_name" "$gcp_id" --yes 2>/dev/null || true
-      done <<< "$conflicts"
-    done
+    printf '[deploy] Auto-importing conflicting resources (attempt %d)...\n' "$attempt"
+    local type_display logical_name gcp_id module type_name import_type
+    while IFS='|' read -r type_display logical_name gcp_id; do
+      [[ -z "$type_display" ]] && continue
+      module=$(printf '%s' "$type_display" | cut -d: -f2)
+      type_name=$(printf '%s' "$type_display" | cut -d: -f3)
+      import_type="gcp:${module}/${type_name,}:${type_name}"
+      printf '  importing: %s %s = %s\n' "$import_type" "$logical_name" "$gcp_id"
+      pulumi import "$import_type" "$logical_name" "$gcp_id" --yes 2>/dev/null || true
+    done <<< "$conflicts"
+  done
 
-    rm -f "$log_file"
-    printf '[deploy] pulumi up failed after %d attempts.\n' "$attempt" >&2
-    return 1
-  }
+  rm -f "$log_file"
+  printf '[deploy] pulumi up failed after %d attempts.\n' "$attempt" >&2
+  return 1
+}
+
+# ── Menu ──────────────────────────────────────────────────────────────────────
+
+_prompt_menu() {
+  local _local_running=0
+  local _lite_count=0
+  local _full_count=0
+  lsof -ti:3006 >/dev/null 2>&1 && _local_running=1 || true
+  if command -v pulumi >/dev/null 2>&1 && pulumi whoami >/dev/null 2>&1; then
+    _lite_count=$(_pulumi_stack_count lite)
+    _full_count=$(_pulumi_stack_count full)
+  fi
+
+  if [[ -n "${DEPLOY_MODE:-}" ]]; then
+    _TARGET="remote"
+    printf '\n  (DEPLOY_MODE=%s — skipping menu)\n' "$DEPLOY_MODE"
+    return
+  fi
+
+  printf '\n=== dashboard-frontend-gcp ===\n\n'
+  printf '  [1] Local  — Vite dev server on localhost (no GCP cost)'
+  (( _local_running )) && printf ' [running]' || printf ' [not detected]'
+  printf '\n'
+  printf '  [2] Lite   — GCP: Cloud Run (scales to zero, cold starts OK) ~400K orders'
+  (( _lite_count > 0 )) && printf ' [%s resources active]' "$_lite_count" || printf ' [not deployed]'
+  printf '\n'
+  printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders'
+  (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
+  printf '               Cloud Run deployment; GKE available on request.\n'
+  printf '  [4] Angular — GCP: Cloud Run for Angular+Spring Boot card (dash-angular-frontend)\n'
+  printf '\nChoice [1/2/3/4, default 4]: '
+  read -r _MODE
+  case "$_MODE" in
+    1) _TARGET="local";  DEPLOY_MODE=""       ;;
+    2) _TARGET="remote"; DEPLOY_MODE="lite"    ;;
+    3) _TARGET="remote"; DEPLOY_MODE="full"    ;;
+    *) _TARGET="remote"; DEPLOY_MODE="angular" ;;
+  esac
+}
+
+# ── Load env file ─────────────────────────────────────────────────────────────
+
+_load_env() {
+  if [[ "$_TARGET" == "remote" ]]; then
+    ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend-gcp/.env.gcp.${DEPLOY_MODE}"
+    FRONTEND_ENV_FILE="$ROOT_DIR/.env.gcp.${DEPLOY_MODE}"
+    [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
+  fi
+}
+
+# ── Local ─────────────────────────────────────────────────────────────────────
+
+_deploy_local() {
+  command -v node >/dev/null 2>&1 || { printf 'Node.js not found — install Node 20+\n' >&2; exit 1; }
+
+  printf '\nInstalling deps...\n'
+  npm install --prefer-offline 2>/dev/null || npm install
+
+  printf '\nFreeing port 3006...\n'
+  "$ROOT_DIR/scripts/free-port.sh" 3006
+
+  BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
+  printf 'Starting Vite dev server on :3006 (BACKEND_URL=%s)...\n' "$BACKEND_URL"
+  printf 'Override: BACKEND_URL=http://other-host:port ./scripts/deploy.sh\n\n'
+
+  BACKEND_URL="$BACKEND_URL" npm run dev
+}
+
+# ── gcloud auth ───────────────────────────────────────────────────────────────
+
+_check_gcloud_auth() {
+  if ! command -v gcloud >/dev/null 2>&1; then
+    printf '\ngcloud CLI not found.\n'
+    if command -v brew >/dev/null 2>&1; then
+      printf 'Installing via Homebrew...\n'
+      brew install --cask google-cloud-sdk
+      source "$(brew --prefix)/share/google-cloud-sdk/path.bash.inc" 2>/dev/null || true
+    else
+      printf 'Install it from: https://cloud.google.com/sdk/docs/install\nThen re-run this script.\n'
+      exit 1
+    fi
+  fi
+
+  ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
+  if [[ -z "$ACTIVE_ACCOUNT" ]]; then
+    printf '\nNot authenticated — logging in...\n'
+    gcloud auth login
+    ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1 || true)
+    [[ -n "$ACTIVE_ACCOUNT" ]] || { printf 'Login did not complete.\n' >&2; exit 1; }
+  fi
+  printf 'Auth: %s\n' "$ACTIVE_ACCOUNT"
+
+  printf '\n=== deployment config ===\n'
+
+  local _CONFIG_PROJECT _CONFIG_REGION
+  _CONFIG_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
+  GCP_PROJECT="${_CONFIG_PROJECT:-${GCP_PROJECT:-}}"
+  [[ -n "$GCP_PROJECT" ]] || { printf '\nNo GCP project detected. Run: gcloud config set project <id>\n' >&2; exit 1; }
+
+  _CONFIG_REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
+  GCP_REGION="${_CONFIG_REGION:-${GCP_REGION:-us-central1}}"
+
+  printf '  Project: %s  Region: %s\n' "$GCP_PROJECT" "$GCP_REGION"
+}
+
+# ── Resolve deploy target (GKE vs Cloud Run) ──────────────────────────────────
+
+_resolve_deploy_target() {
+  local DEMO_SCALE
+  DEMO_SCALE="$( [[ "$DEPLOY_MODE" == "full" ]] && printf '~4M demo orders' || printf '~500K demo orders' )"
+
+  TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
+      "$ROOT_DIR/index.html" "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
+      -type f 2>/dev/null | sort | xargs cat 2>/dev/null \
+    | _shasum | cut -c1-16 || true)
+  TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
+
+  if [[ "$DEPLOY_MODE" == "lite" ]]; then
+    DEPLOY_TARGET="cloudrun"
+    printf '\n  [lite] Skipping GKE — deploying to Cloud Run.\n'
+  else
+    local _GKE_EXISTS _CR_EXISTS
+    _GKE_EXISTS=$(gcloud container clusters describe "${GKE_CLUSTER}" \
+      --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
+    _CR_EXISTS=$(gcloud run services describe dash-react-frontend \
+      --region "$GCP_REGION" --project "$GCP_PROJECT" --format="value(name)" 2>/dev/null || true)
+    if [[ -n "$_GKE_EXISTS" ]]; then
+      DEPLOY_TARGET="gke"
+      printf '\n  GKE cluster detected — redeploying to GKE.\n'
+    elif [[ -n "$_CR_EXISTS" ]]; then
+      DEPLOY_TARGET="cloudrun"
+      printf '\n  Cloud Run service detected — redeploying to Cloud Run.\n'
+    else
+      printf '\n  No existing deployment detected.\n'
+      printf '  Continue to deploy to Cloud Run? [Y/n]: '
+      local _CHOICE
+      read -r _CHOICE
+      case "${_CHOICE:-Y}" in
+        [nN]*) DEPLOY_TARGET="gke" ;;
+        *)     DEPLOY_TARGET="cloudrun" ;;
+      esac
+      printf '\n  Target: %s\n' "$DEPLOY_TARGET"
+    fi
+  fi
+
+  GKE_ZONE="${GCP_REGION}-a"
+  _FE_PREFIX=$([[ "$DEPLOY_MODE" == "lite" ]] && printf 'dash-react-lite' || printf 'dash-react')
+  REGISTRY="${_FE_PREFIX}-frontend-repo"
+}
+
+# ── Resolve backend URL ───────────────────────────────────────────────────────
+
+_resolve_backend_url() {
+  BACKEND_URL="${BACKEND_URL:-}"
+  if [[ "$DEPLOY_MODE" == "angular" && -z "$BACKEND_URL" ]]; then
+    BACKEND_URL="https://dash-full-backend-77y7e2wykq-uc.a.run.app"
+  fi
+  [[ -n "$BACKEND_URL" ]] && return
+
+  if [[ "$DEPLOY_TARGET" == "gke" ]]; then
+    if ! command -v kubectl >/dev/null 2>&1; then
+      printf '  kubectl not found — installing via gcloud components...\n'
+      gcloud components install kubectl --quiet
+    fi
+    local _SDK_BIN _IP
+    _SDK_BIN="$(gcloud info --format='value(installation.sdk_root)')/bin"
+    export PATH="${_SDK_BIN}:${PATH}"
+    gcloud container clusters get-credentials "$GKE_CLUSTER" \
+      --zone "$GKE_ZONE" --project "$GCP_PROJECT"
+    _IP=$(kubectl get ingress dash-backend -n "$K8S_NAMESPACE" \
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+    [[ -n "$_IP" ]] && BACKEND_URL="http://${_IP}"
+  else
+    local _IP
+    if [[ -n "$BACKEND_INFRA_DIR" && -d "$BACKEND_INFRA_DIR" ]] && command -v pulumi >/dev/null 2>&1; then
+      BACKEND_URL=$(cd "$BACKEND_INFRA_DIR" && \
+        pulumi stack select "$DEPLOY_MODE" 2>/dev/null && \
+        pulumi stack output backendUrl 2>/dev/null || true)
+    fi
+    if [[ -z "$BACKEND_URL" ]]; then
+      local _LB_NS="${DEPLOY_MODE_PREFIX:-dash-lite}"
+      local _SDK_BIN
+      _SDK_BIN="$(gcloud info --format='value(installation.sdk_root)')/bin"
+      export PATH="${_SDK_BIN}:${PATH}"
+      gcloud container clusters get-credentials "${_LB_NS}-cluster" \
+        --zone "${GCP_REGION}-a" --project "$GCP_PROJECT" --quiet 2>/dev/null || true
+      _IP=$(kubectl get svc "${_LB_NS}-backend" -n "${_LB_NS}" \
+        -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+      [[ -n "$_IP" ]] && BACKEND_URL="http://${_IP}"
+    fi
+  fi
+
+  if [[ -z "$BACKEND_URL" ]]; then
+    printf '\nCould not resolve backend URL automatically.\n'
+    printf 'Enter backend URL (or press Enter to abort): '
+    local _MANUAL_URL
+    read -r _MANUAL_URL
+    [[ -n "$_MANUAL_URL" ]] || { printf 'Aborted.\n'; exit 1; }
+    BACKEND_URL="$_MANUAL_URL"
+  fi
+}
+
+# ── Build image ───────────────────────────────────────────────────────────────
+
+_build_image() {
+  local DEMO_SCALE
+  DEMO_SCALE="$( [[ "$DEPLOY_MODE" == "full" ]] && printf '~4M demo orders' || printf '~500K demo orders' )"
+
+  if ! gcloud artifacts repositories describe "$REGISTRY" \
+        --project="$GCP_PROJECT" --location="$GCP_REGION" >/dev/null 2>&1; then
+    printf '  Creating repo "%s"...\n' "$REGISTRY"
+    gcloud artifacts repositories create "$REGISTRY" \
+      --repository-format=docker \
+      --location="$GCP_REGION" \
+      --project="$GCP_PROJECT"
+  fi
+
+  IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend:${TAG}"
+
+  local _IMG_EXISTS
+  _IMG_EXISTS=$(gcloud artifacts docker tags list \
+    "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend" \
+    --filter="tag=${TAG}" \
+    --format="value(tag)" \
+    --project "$GCP_PROJECT" 2>/dev/null | head -1 || true)
+
+  printf 'VITE_DEMO_SCALE=%s\n' "$DEMO_SCALE" > "$ROOT_DIR/.env.production"
+
+  if [[ -n "$_IMG_EXISTS" ]]; then
+    printf '  Image %s exists — skipping build.\n' "$TAG"
+  else
+    printf 'Building: %s\n' "$IMAGE"
+    if docker info >/dev/null 2>&1; then
+      gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+      docker build --platform linux/amd64 -t "$IMAGE" "$ROOT_DIR"
+      docker push "$IMAGE"
+    else
+      _cloudbuild_submit "$IMAGE" "$GCP_PROJECT" "$ROOT_DIR"
+    fi
+  fi
+  rm -f "$ROOT_DIR/.env.production"
+}
+
+# ── Deploy to GKE ─────────────────────────────────────────────────────────────
+
+_deploy_gke() {
+  printf '\n=== deploying to GKE via Cloud Build ===\n'
+  printf '  Cluster: %s  Region: %s\n' "$GKE_CLUSTER" "$GCP_REGION"
+
+  gcloud services enable cloudbuild.googleapis.com container.googleapis.com \
+    --project "$GCP_PROJECT" --quiet
+
+  gcloud builds submit "$ROOT_DIR/k8s" \
+    --config "$ROOT_DIR/cloudbuild-gke.yaml" \
+    --substitutions "_IMAGE=${IMAGE},_BACKEND_URL=${BACKEND_URL},_CLUSTER=${GKE_CLUSTER},_ZONE=${GKE_ZONE},_NAMESPACE=${K8S_NAMESPACE}" \
+    --project "$GCP_PROJECT"
+
+  FRONTEND_URL="<check GKE ingress — see Cloud Build output above>"
+  printf '\nDone. Check ingress IP in Cloud Build output above.\n'
+}
+
+# ── Deploy to Cloud Run via Pulumi ────────────────────────────────────────────
+
+_deploy_cloudrun() {
+  local _IMG_EXISTS _DEPLOYED_IMG
+  _IMG_EXISTS=$(gcloud artifacts docker tags list \
+    "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend" \
+    --filter="tag=${TAG}" --format="value(tag)" \
+    --project "$GCP_PROJECT" 2>/dev/null | head -1 || true)
+
+  if [[ -n "$_IMG_EXISTS" ]]; then
+    _DEPLOYED_IMG=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
+      --region "$GCP_REGION" --project "$GCP_PROJECT" \
+      --format="value(spec.template.spec.containers[0].image)" 2>/dev/null || true)
+    if [[ "$_DEPLOYED_IMG" == "$IMAGE" ]]; then
+      printf '  Cloud Run already serving %s — skipping Pulumi.\n' "$TAG"
+      FRONTEND_URL=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
+        --region "$GCP_REGION" --project "$GCP_PROJECT" \
+        --format="value(status.url)" 2>/dev/null || true)
+      printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "${FRONTEND_URL:-}" > "$FRONTEND_ENV_FILE"
+      printf '\nFrontend unchanged. URL:\n  %s\n' "${FRONTEND_URL:-}"
+      return
+    fi
+  fi
+
+  printf '\n=== deploying via Pulumi ===\n'
+
+  if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
+    printf 'Setting up ADC (required by Pulumi)...\n'
+    gcloud auth application-default login
+  fi
 
   cd "$INFRA_DIR"
   npm install --prefer-offline 2>/dev/null || npm install
@@ -420,5 +475,22 @@ PYEOF
   FRONTEND_URL=$(pulumi stack output frontendUrl 2>/dev/null || true)
   printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "$FRONTEND_URL" > "$FRONTEND_ENV_FILE"
   printf '\nDone. Frontend URL:\n  %s\n' "$FRONTEND_URL"
-fi
+}
 
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+_prompt_menu
+_load_env
+if [[ "$_TARGET" == "local" ]]; then
+  _deploy_local
+else
+  _check_gcloud_auth
+  _resolve_deploy_target
+  _resolve_backend_url
+  _build_image
+  if [[ "$DEPLOY_TARGET" == "gke" ]]; then
+    _deploy_gke
+  else
+    _deploy_cloudrun
+  fi
+fi

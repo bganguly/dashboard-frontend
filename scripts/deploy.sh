@@ -196,9 +196,9 @@ _prompt_menu() {
 
 _load_env() {
   if [[ "$_TARGET" == "remote" ]]; then
-    ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend-gcp/.env.gcp.${DEPLOY_MODE}"
+    ENV_FILE="$ROOT_DIR/../springboot-dashboard-backend/.env.gcp.${DEPLOY_MODE}"
     FRONTEND_ENV_FILE="$ROOT_DIR/.env.gcp.${DEPLOY_MODE}"
-    [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
+    [[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || true
   fi
 }
 

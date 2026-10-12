@@ -2,5 +2,10 @@ node_modules/
 dist/
 .env
 .env.local
+.env.gcp.*
 coverage/
 tsconfig.tsbuildinfo
+infra/Pulumi.angular.yaml
+infra/Pulumi.full.yaml
+cloudbuild-gke.yaml
+k8s/

@@ -286,13 +286,18 @@ _resolve_deploy_target() {
       printf '\n  Cloud Run service detected — redeploying to Cloud Run.\n'
     else
       printf '\n  No existing deployment detected.\n'
-      printf '  Continue to deploy to Cloud Run? [Y/n]: '
-      local _CHOICE
-      read -r _CHOICE
-      case "${_CHOICE:-Y}" in
-        [nN]*) DEPLOY_TARGET="gke" ;;
-        *)     DEPLOY_TARGET="cloudrun" ;;
-      esac
+      if [[ -t 0 ]]; then
+        printf '  Continue to deploy to Cloud Run? [Y/n]: '
+        local _CHOICE
+        read -r _CHOICE
+        case "${_CHOICE:-Y}" in
+          [nN]*) DEPLOY_TARGET="gke" ;;
+          *)     DEPLOY_TARGET="cloudrun" ;;
+        esac
+      else
+        DEPLOY_TARGET="cloudrun"
+        printf '  Non-interactive — defaulting to Cloud Run.\n'
+      fi
       printf '\n  Target: %s\n' "$DEPLOY_TARGET"
     fi
   fi
@@ -345,6 +350,9 @@ _resolve_backend_url() {
   fi
 
   if [[ -z "$BACKEND_URL" ]]; then
+    if [[ ! -t 0 ]]; then
+      printf '\nCould not resolve backend URL — non-interactive, aborting.\n' >&2; exit 1
+    fi
     printf '\nCould not resolve backend URL automatically.\n'
     printf 'Enter backend URL (or press Enter to abort): '
     local _MANUAL_URL

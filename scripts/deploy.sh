@@ -25,6 +25,10 @@ K8S_NAMESPACE="dash"
 
 cd "$ROOT_DIR"
 
+# ── Load modules ──────────────────────────────────────────────────────────────
+source "$ROOT_DIR/scripts/deploy/cloudbuild.sh"
+source "$ROOT_DIR/scripts/deploy/cloudrun.sh"
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 _pulumi_stack_count() {
@@ -45,55 +49,6 @@ except Exception:
 }
 
 _shasum() { shasum -a 256 "$@" 2>/dev/null || sha256sum "$@" 2>/dev/null; }
-
-_cloudbuild_submit() {
-  local tag="$1" project="$2" srcdir="$3"
-  gcloud services enable cloudbuild.googleapis.com --project "$project"
-
-  local _CB_ROLE
-  _CB_ROLE=$(gcloud projects get-iam-policy "$project" \
-    --flatten="bindings[].members" \
-    --filter="bindings.members:user:${ACTIVE_ACCOUNT} AND (bindings.role:roles/cloudbuild OR bindings.role:roles/owner OR bindings.role:roles/editor)" \
-    --format="value(bindings.role)" 2>/dev/null | head -1 || true)
-  if [[ -z "$_CB_ROLE" ]]; then
-    printf '  Granting Cloud Build Editor to %s...\n' "$ACTIVE_ACCOUNT"
-    gcloud projects add-iam-policy-binding "$project" \
-      --member="user:${ACTIVE_ACCOUNT}" \
-      --role="roles/cloudbuild.builds.editor" --quiet
-  fi
-
-  local cache_tag tmpyaml attempt rc
-  cache_tag="${tag%:*}:cache"
-  tmpyaml=$(mktemp /tmp/cloudbuild.XXXXXX)
-  cat > "$tmpyaml" <<YAML
-steps:
-- name: 'gcr.io/cloud-builders/docker'
-  entrypoint: bash
-  args:
-  - -c
-  - |
-    docker pull '${cache_tag}' 2>/dev/null || true
-    docker build --cache-from '${cache_tag}' -t '${tag}' -t '${cache_tag}' .
-- name: 'gcr.io/cloud-builders/docker'
-  args: [push, '${tag}']
-- name: 'gcr.io/cloud-builders/docker'
-  args: [push, '${cache_tag}']
-images:
-- '${tag}'
-- '${cache_tag}'
-YAML
-  attempt=0 rc=0
-  while (( attempt < 3 )); do
-    attempt=$(( attempt + 1 ))
-    set +e; gcloud builds submit --config "$tmpyaml" --project "$project" "$srcdir"; rc=$?; set -e
-    [[ "$rc" == "0" ]] && { rm -f "$tmpyaml"; return 0; }
-    [[ "$rc" == "130" ]] && { printf '\n[deploy] Build cancelled.\n'; rm -f "$tmpyaml"; exit 130; }
-    (( attempt < 3 )) && { printf '  Cloud Build submit failed (attempt %d/3) — waiting 20s for IAM propagation...\n' "$attempt"; sleep 20; }
-  done
-  rm -f "$tmpyaml"
-  printf '[deploy] Cloud Build failed after 3 attempts.\n' >&2
-  return 1
-}
 
 _pulumi_up_robust() {
   local log_file attempt rc conflicts
@@ -419,70 +374,6 @@ _deploy_gke() {
 
   FRONTEND_URL="<check GKE ingress — see Cloud Build output above>"
   printf '\nDone. Check ingress IP in Cloud Build output above.\n'
-}
-
-# ── Deploy to Cloud Run via Pulumi ────────────────────────────────────────────
-
-_deploy_cloudrun() {
-  local _IMG_EXISTS _DEPLOYED_IMG
-  _IMG_EXISTS=$(gcloud artifacts docker tags list \
-    "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REGISTRY}/frontend" \
-    --filter="tag=${TAG}" --format="value(tag)" \
-    --project "$GCP_PROJECT" 2>/dev/null | head -1 || true)
-
-  if [[ -n "$_IMG_EXISTS" ]]; then
-    _DEPLOYED_IMG=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
-      --region "$GCP_REGION" --project "$GCP_PROJECT" \
-      --format="value(spec.template.spec.containers[0].image)" 2>/dev/null || true)
-    if [[ "$_DEPLOYED_IMG" == "$IMAGE" ]]; then
-      printf '  Cloud Run already serving %s — skipping Pulumi.\n' "$TAG"
-      FRONTEND_URL=$(gcloud run services describe "${_FE_PREFIX}-frontend" \
-        --region "$GCP_REGION" --project "$GCP_PROJECT" \
-        --format="value(status.url)" 2>/dev/null || true)
-      printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "${FRONTEND_URL:-}" > "$FRONTEND_ENV_FILE"
-      printf '\nFrontend unchanged. URL:\n  %s\n' "${FRONTEND_URL:-}"
-      return
-    fi
-  fi
-
-  printf '\n=== deploying via Pulumi ===\n'
-
-  if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
-    printf 'Setting up ADC (required by Pulumi)...\n'
-    gcloud auth application-default login
-  fi
-
-  cd "$INFRA_DIR"
-  npm install --prefer-offline 2>/dev/null || npm install
-  pulumi stack select "$DEPLOY_MODE" 2>/dev/null || pulumi stack init "$DEPLOY_MODE"
-  pulumi config set gcp:project   "$GCP_PROJECT"
-  pulumi config set gcp:region    "$GCP_REGION"
-  pulumi config set backendUrl    "$BACKEND_URL"
-  pulumi config set frontendImage "$IMAGE"
-  if [[ "$DEPLOY_MODE" == "lite" ]]; then
-    pulumi config set namePrefix       "dash-react-lite"
-    pulumi config set minInstanceCount "0"
-    pulumi config set maxInstanceCount "1"
-    pulumi config set cpu              "1"
-    pulumi config set memory           "512Mi"
-  elif [[ "$DEPLOY_MODE" == "angular" ]]; then
-    pulumi config set namePrefix       "dash-angular"
-    pulumi config set minInstanceCount "0"
-    pulumi config set maxInstanceCount "1"
-    pulumi config set cpu              "1"
-    pulumi config set memory           "512Mi"
-  else
-    pulumi config set namePrefix       "dash-react"
-    pulumi config set minInstanceCount "1"
-    pulumi config set maxInstanceCount "3"
-    pulumi config set cpu              "1"
-    pulumi config set memory           "512Mi"
-  fi
-  _pulumi_up_robust
-
-  FRONTEND_URL=$(pulumi stack output frontendUrl 2>/dev/null || true)
-  printf 'GCP_PROJECT=%s\nFRONTEND_URL=%s\n' "$GCP_PROJECT" "$FRONTEND_URL" > "$FRONTEND_ENV_FILE"
-  printf '\nDone. Frontend URL:\n  %s\n' "$FRONTEND_URL"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

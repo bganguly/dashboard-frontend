@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import MultiSelectFilter, { cn, type ComboOption } from "./MultiSelectFilter";
 
 export const ORDER_STATUSES = [
   "PENDING",
@@ -80,167 +81,6 @@ interface Chip {
   clear: () => void;
 }
 
-function cn(...classes: (string | false | undefined)[]): string {
-  return classes.filter(Boolean).join(" ");
-}
-
-/** An option with a value (sent to the API) and a display label (cosmetic). */
-interface ComboOption {
-  value: string;
-  label: string;
-}
-
-interface MultiSelectFilterProps {
-  legend: string;
-  /** Full list of selectable options. */
-  options: ComboOption[];
-  /** Currently selected values. */
-  selected: string[];
-  /** Toggle a value in/out of the selection. */
-  onToggle: (value: string) => void;
-  /** testid for the search input (e.g. "filter-status-search"). */
-  searchTestId: string;
-  /** Builds the testid for each option (e.g. (v) => `filter-status-${v}`). */
-  optionTestId: (value: string) => string;
-  /** Placeholder for the search box. */
-  placeholder: string;
-  /** Shown when `options` is empty. */
-  emptyText?: string;
-}
-
-/**
- * Collapsed, searchable multi-select combobox. Only a search input and the
- * selected chips are rendered at rest — the option list is revealed in a
- * dropdown on focus (or while typing) and collapses on blur. Matching is a
- * case-insensitive substring over both the label and the value. Selecting
- * toggles the value; `onMouseDown` is prevented on options so a click doesn't
- * blur the input (keeping the dropdown open for multi-select).
- */
-function MultiSelectFilter({
-  legend,
-  options,
-  selected,
-  onToggle,
-  searchTestId,
-  optionTestId,
-  placeholder,
-  emptyText,
-}: MultiSelectFilterProps) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const listboxId = `${searchTestId}-listbox`;
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matches = q
-      ? options.filter(
-          (o) =>
-            o.label.toLowerCase().includes(q) ||
-            o.value.toLowerCase().includes(q),
-        )
-      : options;
-    // Alpha-sort by displayed label (case-insensitive) for predictable order.
-    return [...matches].sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
-    );
-  }, [options, query]);
-
-  const labelFor = (v: string) =>
-    options.find((o) => o.value === v)?.label ?? v;
-
-  return (
-    <fieldset className="space-y-2">
-      <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {legend}
-      </legend>
-
-      {/* Selected chips (stay visible while the option list is collapsed). */}
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {selected.map((v) => (
-            <span
-              key={v}
-              className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-            >
-              {labelFor(v)}
-              <button
-                type="button"
-                onClick={() => onToggle(v)}
-                aria-label={`Remove ${labelFor(v)}`}
-                className="text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="relative">
-        <input
-          type="search"
-          data-testid={searchTestId}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
-          placeholder={placeholder}
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={listboxId}
-          aria-label={`Filter ${legend} options`}
-          className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
-        />
-
-        {open && (
-          <div
-            role="listbox"
-            id={listboxId}
-            className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-950"
-          >
-            {options.length === 0 ? (
-              <p className="px-2 py-1 text-xs text-gray-400">
-                {emptyText ?? "No options."}
-              </p>
-            ) : filtered.length === 0 ? (
-              <p className="px-2 py-1 text-xs text-gray-400">No matches.</p>
-            ) : (
-              filtered.map((opt) => {
-                const isSelected = selected.includes(opt.value);
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    data-testid={optionTestId(opt.value)}
-                    // Keep the input focused so the dropdown stays open while
-                    // toggling multiple options.
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => onToggle(opt.value)}
-                    className={cn(
-                      "flex w-full items-center justify-between px-2 py-1 text-left text-sm",
-                      isSelected
-                        ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                        : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800",
-                    )}
-                  >
-                    <span>{opt.label}</span>
-                    {isSelected && <span aria-hidden>✓</span>}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
-    </fieldset>
-  );
-}
-
 export default function FilterSidebar({
   value,
   onChange,
@@ -251,13 +91,10 @@ export default function FilterSidebar({
 
   const patch = (p: Partial<OrderFilters>) => onChange({ ...value, ...p });
 
-  // Local state for total range inputs — debounced so per-keystroke typing
-  // doesn't fire a fetch on every character.
   const [localMin, setLocalMin] = useState(value.totalMin);
   const [localMax, setLocalMax] = useState(value.totalMax);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync local inputs when filters are reset externally (e.g. Clear All).
   useEffect(() => { setLocalMin(value.totalMin); }, [value.totalMin]);
   useEffect(() => { setLocalMax(value.totalMax); }, [value.totalMax]);
 
@@ -283,8 +120,6 @@ export default function FilterSidebar({
     [regionOptions],
   );
 
-  // Active-filter chips for the non-combobox filters (date, total). Status and
-  // region selections are shown as chips inside their own comboboxes.
   const otherChips: Chip[] = [
     ...(value.from || value.to
       ? [
@@ -313,8 +148,6 @@ export default function FilterSidebar({
 
   const body = (
     <div className="space-y-5">
-      {/* Active (date/total) chips + clear-all. Clear stays available whenever
-          any filter — including status/region — is active. */}
       {anyActive && (
         <div className="space-y-2">
           {otherChips.length > 0 && (
@@ -348,7 +181,6 @@ export default function FilterSidebar({
         </div>
       )}
 
-      {/* Status — collapsed searchable combobox */}
       <MultiSelectFilter
         legend="Status"
         options={statusComboOptions}
@@ -359,7 +191,6 @@ export default function FilterSidebar({
         placeholder="Search status…"
       />
 
-      {/* Region — collapsed searchable combobox (shows names, sends codes) */}
       <MultiSelectFilter
         legend="Region"
         options={regionComboOptions}
@@ -371,7 +202,6 @@ export default function FilterSidebar({
         emptyText="No regions loaded yet."
       />
 
-      {/* Date range (placedAt) */}
       <fieldset className="space-y-1.5">
         <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
           Placed date
@@ -396,7 +226,6 @@ export default function FilterSidebar({
         </label>
       </fieldset>
 
-      {/* Total range */}
       <fieldset className="space-y-1.5">
         <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
           Order total
@@ -436,7 +265,6 @@ export default function FilterSidebar({
 
   return (
     <div className="lg:w-64 lg:shrink-0">
-      {/* Mobile trigger */}
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
@@ -445,7 +273,6 @@ export default function FilterSidebar({
         Filters{chipCount > 0 ? ` (${chipCount})` : ""}
       </button>
 
-      {/* Mobile backdrop */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 lg:hidden"
@@ -459,7 +286,6 @@ export default function FilterSidebar({
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-72 transform overflow-y-auto border-r border-gray-200 bg-white p-4 shadow-lg transition-transform dark:border-gray-800 dark:bg-gray-900",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
-          // Desktop: static column, always shown, can collapse to a rail.
           "lg:static lg:z-auto lg:translate-x-0 lg:rounded-lg lg:border lg:shadow-sm",
           collapsed ? "lg:w-12" : "lg:w-64",
         )}
@@ -468,7 +294,6 @@ export default function FilterSidebar({
           <h2 className={cn("text-base font-semibold", collapsed && "lg:hidden")}>
             Filters
           </h2>
-          {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
@@ -477,7 +302,6 @@ export default function FilterSidebar({
           >
             {collapsed ? "»" : "«"}
           </button>
-          {/* Mobile close */}
           <button
             type="button"
             onClick={() => setMobileOpen(false)}

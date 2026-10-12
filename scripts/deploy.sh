@@ -6,7 +6,7 @@ INFRA_DIR="$ROOT_DIR/infra"
 BACKEND_INFRA_DIR="$(cd "$ROOT_DIR/../springboot-dashboard-backend/infra" 2>/dev/null && pwd || true)"
 
 _TARGET=""
-DEPLOY_MODE=""
+DEPLOY_MODE="${DEPLOY_MODE:-}"
 DEPLOY_TARGET=""
 ENV_FILE=""
 FRONTEND_ENV_FILE=""

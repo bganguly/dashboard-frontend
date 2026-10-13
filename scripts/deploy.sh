@@ -136,14 +136,12 @@ _prompt_menu() {
   printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders [React + Spring Boot card]'
   (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
   printf '               Cloud Run deployment; GKE available on request.\n'
-  printf '  [4] Angular — GCP: Cloud Run for Angular+Spring Boot card (dash-angular-frontend)\n'
-  printf '\nChoice [1/2/3/4, default 4]: '
+  printf '\nChoice [1/2/3, default 3]: '
   read -r _MODE
   case "$_MODE" in
-    1) _TARGET="local";  DEPLOY_MODE=""       ;;
-    2) _TARGET="remote"; DEPLOY_MODE="lite"    ;;
-    3) _TARGET="remote"; DEPLOY_MODE="full"    ;;
-    *) _TARGET="remote"; DEPLOY_MODE="angular" ;;
+    1) _TARGET="local";  DEPLOY_MODE=""    ;;
+    2) _TARGET="remote"; DEPLOY_MODE="lite" ;;
+    *) _TARGET="remote"; DEPLOY_MODE="full" ;;
   esac
 }
 
@@ -266,9 +264,6 @@ _resolve_deploy_target() {
 
 _resolve_backend_url() {
   BACKEND_URL="${BACKEND_URL:-}"
-  if [[ "$DEPLOY_MODE" == "angular" && -z "$BACKEND_URL" ]]; then
-    BACKEND_URL="https://dash-full-backend-77y7e2wykq-uc.a.run.app"
-  fi
   [[ -n "$BACKEND_URL" ]] && return
 
   if [[ "$DEPLOY_TARGET" == "gke" ]]; then

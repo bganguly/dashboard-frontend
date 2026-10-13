@@ -95,7 +95,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
 
     abortRef.current?.abort();
     const ctrl = new AbortController(); abortRef.current = ctrl;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setApiTotal(null);
     try {
       const res = await fetch(`${endpoint}?${params}`, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

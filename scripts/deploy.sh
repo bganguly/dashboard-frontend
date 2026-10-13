@@ -133,7 +133,7 @@ _prompt_menu() {
   printf '  [2] Lite   — GCP: Cloud Run (scales to zero, cold starts OK) ~400K orders'
   (( _lite_count > 0 )) && printf ' [%s resources active]' "$_lite_count" || printf ' [not deployed]'
   printf '\n'
-  printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders'
+  printf '  [3] Full   — GCP: Cloud Run (scales to zero) ~4M orders [React + Spring Boot card]'
   (( _full_count > 0 )) && printf ' [%s resources active]' "$_full_count" || printf ' [not deployed]'
   printf '               Cloud Run deployment; GKE available on request.\n'
   printf '  [4] Angular — GCP: Cloud Run for Angular+Spring Boot card (dash-angular-frontend)\n'

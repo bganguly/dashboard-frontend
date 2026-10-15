@@ -11,10 +11,11 @@ routing `/api/*` to the Spring Boot backend with TLS SNI passthrough.
 
 | Endpoint | URL |
 |---|---|
-| **App** | available on demand via `deploy.sh` |
+| **App** | https://dash-react-frontend-77y7e2wykq-uc.a.run.app |
+| **API Explorer** | https://dash-react-frontend-77y7e2wykq-uc.a.run.app/api-explorer |
 | **Portfolio demo** | https://bganguly.github.io/#orders_dashboard |
 
-> Cloud Run scales to zero when idle; run `deploy.sh` to provision GCP infrastructure and start the service.
+> Cloud Run scales to zero when idle; the first request after a period of inactivity may have a slight delay.
 
 ---
 

@@ -26,6 +26,7 @@ function mergeRegions(prev: RegionOption[], incoming: RegionOption[]): RegionOpt
 export default function App() {
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_FILTERS);
   const [regionOptions, setRegionOptions] = useState<RegionOption[]>([]);
+  const [datasetBounds, setDatasetBounds] = useState<{ from: string; to: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [backendRuntime, setBackendRuntime] = useState<string | null>(null);
   // Total from the chart's /api/aggregates response — null while (re)loading.
@@ -91,6 +92,24 @@ export default function App() {
       .then((data: RegionOption[]) => {
         if (cancelled || !Array.isArray(data)) return;
         setRegionOptions((prev) => mergeRegions(prev, data));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/dataset-bounds")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { from: string; to: string }) => {
+        if (cancelled || !d.from || !d.to) return;
+        setDatasetBounds(d);
+        // Auto-populate: default to the 90 days ending at the dataset's max date.
+        const end = new Date(`${d.to}T00:00:00Z`);
+        end.setUTCDate(end.getUTCDate() - 90);
+        setFilters((f) =>
+          f.from || f.to ? f : { ...f, from: end.toISOString().slice(0, 10), to: d.to }
+        );
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -181,7 +200,7 @@ export default function App() {
           <ThemeToggle />
         </header>
         <div className="flex flex-col gap-6 lg:flex-row">
-          <FilterSidebar value={filters} onChange={setFilters} regionOptions={regionOptions} />
+          <FilterSidebar value={filters} onChange={setFilters} regionOptions={regionOptions} datasetBounds={datasetBounds} />
           <div className="min-w-0 flex-1 grid grid-cols-1 gap-6">
             <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} backendReady={backendReady} onLoadingChange={setChartLoading} />
             <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} backendReady={backendReady} onLoadingChange={setTableLoading} />

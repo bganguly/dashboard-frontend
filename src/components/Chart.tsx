@@ -92,8 +92,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     appendFilterParams(params, filters);
     if (searchQuery) params.set("q", searchQuery);
     const requestKey = params.toString();
-    console.log("[Chart] fetchAggregates called", { from, to, "filters.from": filters?.from, "filters.to": filters?.to, requestKey, lastKey: lastRequestKeyRef.current });
-    if (requestKey === lastRequestKeyRef.current) { console.log("[Chart] DEDUP SKIP — same requestKey"); return; }
+    if (requestKey === lastRequestKeyRef.current) return;
     lastRequestKeyRef.current = requestKey;
 
     abortRef.current?.abort();
@@ -104,11 +103,10 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       const rows = Array.isArray(json.data) ? json.data : [];
-      console.log("[Chart] fetch success — rows:", rows.length, "first:", rows[0]?.date, "last:", rows[rows.length-1]?.date, "total:", json.totalOrders);
       setRawData(rows);
       setApiTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
     } catch (err) {
-      if ((err as Error).name === "AbortError") { console.log("[Chart] fetch ABORTED"); return; }
+      if ((err as Error).name === "AbortError") return;
       lastRequestKeyRef.current = null;
       setError((err as Error).message);
     } finally { if (abortRef.current === ctrl) { setLoading(false); setFetchedOnce(true); } }
@@ -127,7 +125,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   useEffect(() => {
     const from = filters?.from || defaultRange().from;
     const to = filters?.to || defaultRange().to;
-    console.log("[Chart] filter effect fired", { from, to, backendReady });
     setRange({ from, to });
     if (!backendReady) return;
     lastRequestKeyRef.current = null;
@@ -180,11 +177,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const categoryTotals = useMemo(() => computeTotals(rawData), [rawData]);
   const topCategories  = useMemo(() => categoryTotals.filter(c => !isOther(c.category)).slice(0, topN).map(c => c.category), [categoryTotals, topN]);
   const withOther = categoryTotals.length > topCategories.length;
-  const buckets   = useMemo(() => {
-    const result = rawData.map(e => buildBucket(e, topCategories, withOther));
-    console.log("[Chart] buckets recomputed — count:", result.length, "first:", result[0]?.date, "last:", result[result.length-1]?.date);
-    return result;
-  }, [rawData, topCategories, withOther]);
+  const buckets   = useMemo(() => rawData.map(e => buildBucket(e, topCategories, withOther)), [rawData, topCategories, withOther]);
 
   const seriesRanked = useMemo(() => {
     const total = apiTotal ?? summedCategoryOrders;
@@ -296,7 +289,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   radius={i === seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
                   shape={(props: object) => <g data-testid="chart-bar" data-category={key}><Rectangle {...props} /></g>} />
               ))}
-              <Brush key={(() => { const k = `${buckets.length}-${buckets[0]?.date ?? ''}-${buckets[buckets.length - 1]?.date ?? ''}`; console.log("[Chart] Brush key =", k); return k; })()} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
+              <Brush key={`${buckets.length}-${buckets[0]?.date ?? ''}-${buckets[buckets.length - 1]?.date ?? ''}`} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
             </BarChart>
           </ResponsiveContainer>
         </>

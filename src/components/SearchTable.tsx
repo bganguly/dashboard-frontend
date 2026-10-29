@@ -20,7 +20,7 @@ export default function SearchTable(props: SearchTableProps) {
     pageItems, footerLoading,
   } = useSearchTable(props);
 
-  const { pageSize = 20, externalTotal, backendReady = true } = props;
+  const { pageSize = 20, externalTotal, backendReady = true, suppressLoader = false } = props;
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -82,7 +82,7 @@ export default function SearchTable(props: SearchTableProps) {
             className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-gray-400"
             aria-live="polite"
           >
-            {(isControlled ? controlledLoading : loading) ? (
+            {suppressLoader ? null : (isControlled ? controlledLoading : loading) ? (
               <>
                 <span
                   aria-hidden
@@ -103,8 +103,6 @@ export default function SearchTable(props: SearchTableProps) {
               </>
             ) : backendReady && fetchDone ? (
               "No results."
-            ) : backendReady ? (
-              <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
             ) : null}
           </div>
         ) : (

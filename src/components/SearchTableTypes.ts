@@ -37,6 +37,7 @@ export interface SearchTableProps {
   onRefinedCount?: (total: number) => void;
   backendReady?: boolean;
   onLoadingChange?: (loading: boolean) => void;
+  suppressLoader?: boolean;
 }
 
 export function cn(...classes: (string | false | undefined)[]): string {

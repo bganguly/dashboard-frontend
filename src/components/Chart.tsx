@@ -110,7 +110,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       if ((err as Error).name === "AbortError") return;
       lastRequestKeyRef.current = null;
       setError((err as Error).message);
-    } finally { setLoading(false); setFetchedOnce(true); }
+    } finally { if (abortRef.current === ctrl) { setLoading(false); setFetchedOnce(true); } }
   }, [endpoint, topN, filters, searchQuery]);
 
   // from/to are recomputed from filters (not read from `range` state) so that

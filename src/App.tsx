@@ -189,7 +189,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex flex-1 justify-center px-4">
-            {wakeStatus && (
+            {(wakeStatus !== null || !(chartDone && tableDone)) && (
               <div
                 className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm"
                 style={wakeStatus === "ready"
@@ -228,7 +228,7 @@ export default function App() {
           <FilterSidebar value={filters} onChange={setFilters} regionOptions={regionOptions} datasetBounds={datasetBounds} />
           <div className="min-w-0 flex-1 grid grid-cols-1 gap-6">
             <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} backendReady={backendReady} onLoadingChange={(l) => { setChartLoading(l); if (!l) setChartDone(true); }} />
-            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} backendReady={backendReady} onLoadingChange={(l) => { setTableLoading(l); if (!l) setTableDone(true); }} />
+            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} backendReady={backendReady} onLoadingChange={(l) => { setTableLoading(l); if (!l) setTableDone(true); }} suppressLoader={!tableDone} />
           </div>
         </div>
       </main>

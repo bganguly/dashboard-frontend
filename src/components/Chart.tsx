@@ -93,7 +93,8 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     appendFilterParams(params, filters);
     if (searchQuery) params.set("q", searchQuery);
     const requestKey = params.toString();
-    if (requestKey === lastRequestKeyRef.current) return;
+    console.log("[Chart] fetchAggregates called — from:", from, "to:", to, "filters.from:", filters?.from, "filters.to:", filters?.to, "key:", requestKey, "lastKey:", lastRequestKeyRef.current);
+    if (requestKey === lastRequestKeyRef.current) { console.log("[Chart] deduped, skipping"); return; }
     lastRequestKeyRef.current = requestKey;
 
     abortRef.current?.abort();
@@ -104,6 +105,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       const rows = Array.isArray(json.data) ? json.data : [];
+      console.log("[Chart] fetch complete — rows:", rows.length, "total:", json.totalOrders);
       setRawData(rows);
       setApiTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
     } catch (err) {
@@ -219,11 +221,13 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   }, [seriesRanked]);
 
   const handleBrushChange = useCallback(({ startIndex, endIndex }: { startIndex?: number; endIndex?: number }) => {
+    if (!mouseDownRef.current) { console.log("[Chart] Brush auto-fire ignored (no mousedown)"); return; }
     if (startIndex == null || endIndex == null || !buckets.length || startIndex < 0 || endIndex >= buckets.length) return;
     const from = String(buckets[startIndex].date); const to = String(buckets[endIndex].date);
+    console.log("[Chart] Brush drag — from:", from, "to:", to);
     if (from === range.from && to === range.to) return;
     setRange({ from, to });
-    if (mouseDownRef.current) pendingDragRef.current = { from, to };
+    pendingDragRef.current = { from, to };
     if (dragTimer.current) clearTimeout(dragTimer.current);
     dragTimer.current = setTimeout(() => { fetchAggregates(from, to); }, DRAG_DEBOUNCE_MS);
   }, [buckets, range.from, range.to, fetchAggregates]);

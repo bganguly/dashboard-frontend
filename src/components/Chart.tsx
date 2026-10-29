@@ -89,8 +89,10 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     appendFilterParams(params, filters);
     if (searchQuery) params.set("q", searchQuery);
     const requestKey = params.toString();
+    console.log("[Chart] fetchAggregates called", { requestKey, lastKey: lastRequestKeyRef.current, deduped: requestKey === lastRequestKeyRef.current });
     if (requestKey === lastRequestKeyRef.current) return;
     lastRequestKeyRef.current = requestKey;
+    console.log("[Chart] fetch firing →", requestKey);
 
     abortRef.current?.abort();
     const ctrl = new AbortController(); abortRef.current = ctrl;
@@ -99,7 +101,9 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       const res = await fetch(`${endpoint}?${params}`, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      setRawData(Array.isArray(json.data) ? json.data : []);
+      const rows = Array.isArray(json.data) ? json.data : [];
+      console.log("[Chart] data arrived", { count: rows.length, first: rows[0]?.date, last: rows[rows.length - 1]?.date });
+      setRawData(rows);
       setApiTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
@@ -122,6 +126,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     const from = filters?.from || defaultRange().from;
     const to = filters?.to || defaultRange().to;
     setRange({ from, to });
+    console.log("[Chart] useEffect fired", { from, to, backendReady, filtersFrom: filters?.from, filtersTo: filters?.to });
     if (!backendReady) return;
     // Reset dedup key so a new closure (searchQuery/filters changed) always
     // fires a fresh request even if the resulting URL matches a prior one.
@@ -225,7 +230,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
         <div className="flex h-72 items-center justify-center text-sm text-red-500">Failed: {error}</div>
       ) : buckets.length === 0 ? (
         <div className="flex h-72 flex-col items-center justify-center gap-2 text-sm text-gray-400">
-          {(loading || !backendReady) ? (
+          {!backendReady ? null : loading ? (
             <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
           ) : "No data."}
         </div>
@@ -275,7 +280,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   radius={i === seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
                   shape={(props: object) => <g data-testid="chart-bar" data-category={key}><Rectangle {...props} /></g>} />
               ))}
-              <Brush key={`${rawData[0]?.date ?? ''}_${rawData[rawData.length - 1]?.date ?? ''}`} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
+              <Brush key={(() => { const k = `${rawData[0]?.date ?? ''}_${rawData[rawData.length - 1]?.date ?? ''}`; console.log("[Chart] Brush key", k, "buckets:", buckets.length); return k; })()} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
             </BarChart>
           </ResponsiveContainer>
         </>

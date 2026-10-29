@@ -20,7 +20,7 @@ export default function SearchTable(props: SearchTableProps) {
     pageItems, footerLoading,
   } = useSearchTable(props);
 
-  const { pageSize = 20, externalTotal } = props;
+  const { pageSize = 20, externalTotal, backendReady = true } = props;
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -101,9 +101,9 @@ export default function SearchTable(props: SearchTableProps) {
                   </span>
                 )}
               </>
-            ) : (
+            ) : backendReady ? (
               "No results."
-            )}
+            ) : null}
           </div>
         ) : (
           <table className="w-full border-collapse text-sm">

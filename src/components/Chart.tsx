@@ -70,7 +70,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const [range, setRange] = useState(defaultRange);
   const onTotalChangeRef = useRef(onTotalChange);
   const [loading, setLoading] = useState(false);
-  const [warmingUp, setWarmingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -132,12 +131,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   }, [fetchAggregates, filters?.from, filters?.to, backendReady]);
 
   useEffect(() => () => { abortRef.current?.abort(); lastRequestKeyRef.current = null; if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
-
-  useEffect(() => {
-    if (!loading) { setWarmingUp(false); return; }
-    const t = setTimeout(() => setWarmingUp(true), 8000);
-    return () => clearTimeout(t);
-  }, [loading]);
 
   // Keep ref in sync so the effect below doesn't need onTotalChange as a dep.
   useEffect(() => { onTotalChangeRef.current = onTotalChange; });
@@ -232,16 +225,8 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
         <div className="flex h-72 items-center justify-center text-sm text-red-500">Failed: {error}</div>
       ) : buckets.length === 0 ? (
         <div className="flex h-72 flex-col items-center justify-center gap-2 text-sm text-gray-400">
-          {loading ? (
-            <>
-              <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
-              {warmingUp ? (
-                <span className="text-center">
-                  <span className="block">Backend waking up…</span>
-                  <span className="block text-xs text-gray-300 dark:text-gray-600">Cloud Run scales to zero when idle — first request takes ~30s</span>
-                </span>
-              ) : "Loading…"}
-            </>
+          {(loading || !backendReady) ? (
+            <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
           ) : "No data."}
         </div>
       ) : (
@@ -251,7 +236,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                 numerically equal left/right margin still leaves far less real
                 buffer on the right — right is padded by the Y-axis width too
                 so both sides give the Brush's edge labels the same clearance. */}
-            <BarChart key={`${rawData[0]?.date ?? ''}_${rawData[rawData.length - 1]?.date ?? ''}`} data={buckets} margin={{ top: 8, right: 8 + 56, left: 8, bottom: 0 }}>
+            <BarChart data={buckets} margin={{ top: 8, right: 8 + 56, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
               <XAxis dataKey="date" fontSize={12} tickMargin={8} stroke={axisColor} tick={{ fill: axisColor }} />
               <YAxis fontSize={12} width={56} stroke={axisColor} tick={{ fill: axisColor }} tickFormatter={compact} />
@@ -290,7 +275,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   radius={i === seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
                   shape={(props: object) => <g data-testid="chart-bar" data-category={key}><Rectangle {...props} /></g>} />
               ))}
-              <Brush dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
+              <Brush key={`${rawData[0]?.date ?? ''}_${rawData[rawData.length - 1]?.date ?? ''}`} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
             </BarChart>
           </ResponsiveContainer>
         </>

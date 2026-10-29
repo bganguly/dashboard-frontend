@@ -216,11 +216,7 @@ export default function App() {
                     <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="20" />
                     </svg>
-                    {chartDone && !tableDone
-                      ? "Chart ready · waiting for list…"
-                      : !chartDone && tableDone
-                      ? "List ready · waiting for chart…"
-                      : "Waiting on backend…"}
+                    Loading…
                   </>
                 )}
               </div>

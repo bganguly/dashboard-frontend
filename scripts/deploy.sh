@@ -218,6 +218,7 @@ _resolve_deploy_target() {
 
   TAG=$(find "$ROOT_DIR/src" "$ROOT_DIR/Dockerfile" \
       "$ROOT_DIR/index.html" "$ROOT_DIR/package.json" "$ROOT_DIR/vite.config"* \
+      "$ROOT_DIR/nginx.conf.template" \
       -type f 2>/dev/null | sort | xargs cat 2>/dev/null \
     | _shasum | cut -c1-16 || true)
   TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"

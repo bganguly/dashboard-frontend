@@ -61,7 +61,7 @@ function compactBrushDate(value: string) {
 }
 
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
-function defaultRange() { return { from: "2020-01-01", to: isoDay(new Date()) }; }
+function defaultRange() { const d = new Date(); d.setDate(d.getDate() - 90); return { from: isoDay(d), to: isoDay(new Date()) }; }
 
 interface ChartProps { endpoint?: string; topN?: number; filters?: OrderFilters; searchQuery?: string; onRangeChange?: (from: string, to: string) => void; onTotalChange?: (n: number) => void; overrideTotal?: number | null; backendReady?: boolean; onLoadingChange?: (loading: boolean) => void; }
 

@@ -212,7 +212,7 @@ export default function FilterSidebar({
         <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-500">
           <input
             type="checkbox"
-            disabled={!datasetBounds}
+            disabled={false}
             checked={
               !!datasetBounds &&
               value.from === datasetBounds.from &&

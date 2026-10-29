@@ -37,6 +37,8 @@ export default function App() {
   const [backendReady, setBackendReady] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
+  const [chartDone, setChartDone] = useState(false);
+  const [tableDone, setTableDone] = useState(false);
   const [wakeStatus, setWakeStatus] = useState<"waking" | "ready" | "resolving" | null>(null);
   const [wakeMs, setWakeMs] = useState(0);
   const wakeStart = useRef<number>(0);
@@ -78,12 +80,12 @@ export default function App() {
     };
   }, []);
 
-  // Dismiss the banner once backend is ready and both children have finished loading.
+  // Dismiss banner once both children have returned data at least once.
   useEffect(() => {
-    if (backendReady && !chartLoading && !tableLoading) {
+    if (backendReady && chartDone && tableDone) {
       setWakeStatus((s) => (s === "resolving" ? null : s));
     }
-  }, [backendReady, chartLoading, tableLoading]);
+  }, [backendReady, chartDone, tableDone]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,7 +210,11 @@ export default function App() {
                     <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="20" />
                     </svg>
-                    Backend resolving request…
+                    {chartDone && !tableDone
+                      ? "Chart ready · waiting for list…"
+                      : !chartDone && tableDone
+                      ? "List ready · waiting for chart…"
+                      : "Waiting on backend…"}
                   </>
                 )}
               </div>
@@ -219,8 +225,8 @@ export default function App() {
         <div className="flex flex-col gap-6 lg:flex-row">
           <FilterSidebar value={filters} onChange={setFilters} regionOptions={regionOptions} datasetBounds={datasetBounds} />
           <div className="min-w-0 flex-1 grid grid-cols-1 gap-6">
-            <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} backendReady={backendReady} onLoadingChange={setChartLoading} />
-            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} backendReady={backendReady} onLoadingChange={setTableLoading} />
+            <Chart filters={filters} searchQuery={searchQuery} onRangeChange={(from, to) => setFilters(f => ({ ...f, from, to }))} onTotalChange={setChartTotal} overrideTotal={exactCount} backendReady={backendReady} onLoadingChange={(l) => { setChartLoading(l); if (!l) setChartDone(true); }} />
+            <SearchTable filters={filters} onRows={handleRows} onQueryChange={setSearchQuery} externalTotal={chartTotal} onRefinedCount={setExactCount} backendReady={backendReady} onLoadingChange={(l) => { setTableLoading(l); if (!l) setTableDone(true); }} />
           </div>
         </div>
       </main>

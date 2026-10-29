@@ -13,7 +13,7 @@ export default function SearchTable(props: SearchTableProps) {
     query, setQuery, debouncedQuery, setDebouncedQuery,
     rows, page,
     displayTotal, displayTotalPages,
-    sort, dir, loading, searchLoading, warmingUp, error,
+    sort, dir, loading, fetchDone, searchLoading, warmingUp, error,
     flashId, newFirstId,
     isControlled, controlledLoading,
     toggleSort, goToPage, goToAdjacentPage,
@@ -101,8 +101,10 @@ export default function SearchTable(props: SearchTableProps) {
                   </span>
                 )}
               </>
-            ) : backendReady ? (
+            ) : backendReady && fetchDone ? (
               "No results."
+            ) : backendReady ? (
+              <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
             ) : null}
           </div>
         ) : (

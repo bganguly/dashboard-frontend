@@ -38,6 +38,7 @@ export function useSearchTable({
   const [sort, setSort] = useState<string>("placedAt");
   const [dir, setDir] = useState<SortDir>("desc");
   const [loading, setLoading] = useState(false);
+  const [fetchDone, setFetchDone] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [warmingUp, setWarmingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +137,7 @@ export function useSearchTable({
         if (abortRef.current === controller) {
           setLoading(false);
           setSearchLoading(false);
+          setFetchDone(true);
         }
       }
     },
@@ -187,6 +189,7 @@ export function useSearchTable({
         if (abortRef.current === controller) {
           setLoading(false);
           setSearchLoading(false);
+          setFetchDone(true);
         }
       }
     },
@@ -357,7 +360,7 @@ export function useSearchTable({
     query, setQuery, debouncedQuery, setDebouncedQuery,
     rows, page, setPage, totalPages, total,
     displayTotal, displayTotalPages,
-    sort, dir, loading, searchLoading, warmingUp, error,
+    sort, dir, loading, fetchDone, searchLoading, warmingUp, error,
     flashId, newFirstId,
     isControlled, effectiveLoading,
     toggleSort, goToPage, goToAdjacentPage,

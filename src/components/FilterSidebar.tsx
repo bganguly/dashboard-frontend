@@ -27,6 +27,7 @@ export interface OrderFilters {
   to: string; // YYYY-MM-DD or ""
   totalMin: string; // numeric string or ""
   totalMax: string;
+  allTime: boolean;
 }
 
 export const EMPTY_FILTERS: OrderFilters = {
@@ -36,6 +37,7 @@ export const EMPTY_FILTERS: OrderFilters = {
   to: "",
   totalMin: "",
   totalMax: "",
+  allTime: false,
 };
 
 /**
@@ -212,19 +214,15 @@ export default function FilterSidebar({
         <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-500">
           <input
             type="checkbox"
-            checked={
-              !!datasetBounds &&
-              value.from === datasetBounds.from &&
-              value.to === datasetBounds.to
-            }
+            checked={value.allTime}
             onChange={(e) => {
               if (!datasetBounds) return;
               if (e.target.checked) {
-                patch({ from: datasetBounds.from, to: datasetBounds.to });
+                patch({ allTime: true, from: datasetBounds.from, to: datasetBounds.to });
               } else {
                 const d = new Date(`${datasetBounds.to}T00:00:00Z`);
                 d.setUTCDate(d.getUTCDate() - 90);
-                patch({ from: d.toISOString().slice(0, 10), to: datasetBounds.to });
+                patch({ allTime: false, from: d.toISOString().slice(0, 10), to: datasetBounds.to });
               }
             }}
             className="h-3.5 w-3.5 rounded accent-indigo-500"
@@ -236,7 +234,7 @@ export default function FilterSidebar({
           <input
             type="date"
             value={value.from}
-            onChange={(e) => patch({ from: e.target.value })}
+            onChange={(e) => patch({ allTime: false, from: e.target.value })}
             className={fieldCls}
           />
         </label>
@@ -245,7 +243,7 @@ export default function FilterSidebar({
           <input
             type="date"
             value={value.to}
-            onChange={(e) => patch({ to: e.target.value })}
+            onChange={(e) => patch({ allTime: false, to: e.target.value })}
             className={fieldCls}
           />
         </label>

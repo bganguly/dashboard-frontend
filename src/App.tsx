@@ -51,17 +51,15 @@ export default function App() {
 
   useEffect(() => {
     wakeStart.current = performance.now();
+    wakeInterval.current = setInterval(() => {
+      setWakeMs(Math.round(performance.now() - wakeStart.current));
+    }, 100);
     slowTimer.current = setTimeout(() => {
       setWakeStatus("waking");
-      setWakeMs(0);
-      wakeInterval.current = setInterval(() => {
-        setWakeMs(Math.round(performance.now() - wakeStart.current));
-      }, 100);
     }, SLOW_WAKING_MS);
 
     const markReady = () => {
       if (slowTimer.current) { clearTimeout(slowTimer.current); slowTimer.current = null; }
-      if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
       setBackendReady(true);
       setWakeStatus((s) => (s === "waking" ? "ready" : null));
       // transition to resolving after a brief "ready" flash, then children take over dismissal
@@ -86,9 +84,11 @@ export default function App() {
   }, [backendReady]);
 
   // Dismiss banner once both children have returned data at least once.
+  // Also stop the elapsed-time interval since banner will disappear.
   // wakeStatus in deps so the check re-fires when it transitions to "resolving".
   useEffect(() => {
     if (backendReady && chartDone && tableDone) {
+      if (wakeInterval.current) { clearInterval(wakeInterval.current); wakeInterval.current = null; }
       setWakeStatus((s) => (s === "resolving" ? null : s));
     }
   }, [backendReady, chartDone, tableDone, wakeStatus]);
@@ -217,6 +217,7 @@ export default function App() {
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="20" />
                     </svg>
                     Loading…
+                    <span className="ml-1 font-mono tabular-nums opacity-70">{(wakeMs / 1000).toFixed(1)}s</span>
                   </>
                 )}
               </div>

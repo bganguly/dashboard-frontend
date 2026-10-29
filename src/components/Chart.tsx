@@ -92,8 +92,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
     appendFilterParams(params, filters);
     if (searchQuery) params.set("q", searchQuery);
     const requestKey = params.toString();
-    console.log("[Chart] fetchAggregates called — from:", from, "to:", to, "filters.from:", filters?.from, "filters.to:", filters?.to, "key:", requestKey, "lastKey:", lastRequestKeyRef.current);
-    if (requestKey === lastRequestKeyRef.current) { console.log("[Chart] deduped, skipping"); return; }
+    if (requestKey === lastRequestKeyRef.current) return;
     lastRequestKeyRef.current = requestKey;
 
     abortRef.current?.abort();
@@ -104,7 +103,6 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       const rows = Array.isArray(json.data) ? json.data : [];
-      console.log("[Chart] fetch complete — rows:", rows.length, "total:", json.totalOrders);
       setRawData(rows);
       setApiTotal(typeof json.totalOrders === "number" ? json.totalOrders : null);
     } catch (err) {
@@ -243,9 +241,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
         <div className="flex h-72 items-center justify-center text-sm text-red-500">Failed: {error}</div>
       ) : buckets.length === 0 ? (
         <div className="flex h-72 flex-col items-center justify-center gap-2 text-sm text-gray-400">
-          {!backendReady ? null : (!fetchedOnce || loading) ? (
-            <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500 dark:border-gray-700 dark:border-t-indigo-400" />
-          ) : "No data."}
+          {backendReady && fetchedOnce && !loading ? "No data." : null}
         </div>
       ) : (
         <>
@@ -293,7 +289,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   radius={i === seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
                   shape={(props: object) => <g data-testid="chart-bar" data-category={key}><Rectangle {...props} /></g>} />
               ))}
-              <Brush dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
+              <Brush key={`${buckets.length}-${buckets[0]?.date ?? ''}-${buckets[buckets.length - 1]?.date ?? ''}`} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
             </BarChart>
           </ResponsiveContainer>
         </>

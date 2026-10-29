@@ -80,12 +80,18 @@ export default function App() {
     };
   }, []);
 
+  // Reset done-flags when backend wakes so they reflect post-backend loads, not initial mount.
+  useEffect(() => {
+    if (backendReady) { setChartDone(false); setTableDone(false); }
+  }, [backendReady]);
+
   // Dismiss banner once both children have returned data at least once.
+  // wakeStatus in deps so the check re-fires when it transitions to "resolving".
   useEffect(() => {
     if (backendReady && chartDone && tableDone) {
       setWakeStatus((s) => (s === "resolving" ? null : s));
     }
-  }, [backendReady, chartDone, tableDone]);
+  }, [backendReady, chartDone, tableDone, wakeStatus]);
 
   useEffect(() => {
     let cancelled = false;

@@ -167,12 +167,30 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const buckets   = useMemo(() => rawData.map(e => buildBucket(e, topCategories, withOther)), [rawData, topCategories, withOther]);
 
   const seriesRanked = useMemo(() => {
+    const total = apiTotal ?? summedCategoryOrders;
     const topSet = new Set(topCategories);
-    const entries = topCategories.map(cat => ({ key: cat, orders: categoryTotals.find(c => c.category === cat)?.orders ?? 0 }));
+
+    // Raw per-category counts from the backend (each order counted once per
+    // category it belongs to, so top-N raw counts can sum to more than total).
+    const rawEntries = topCategories.map(cat => ({
+      key: cat,
+      raw: categoryTotals.find(c => c.category === cat)?.orders ?? 0,
+    }));
+    // Sum all non-top-N category raw counts (includes backend "Others" bucket
+    // and any named categories beyond the top-N cutoff).
+    const othersRaw = categoryTotals
+      .filter(c => !topSet.has(c.category))
+      .reduce((s, c) => s + c.orders, 0);
+    const rawTotal = rawEntries.reduce((s, e) => s + e.raw, 0) + othersRaw;
+
+    // Scale proportionally so legend counts sum to the grand total.
+    const entries = rawEntries.map(e => ({
+      key: e.key,
+      orders: rawTotal > 0 ? Math.round(total * e.raw / rawTotal) : 0,
+    }));
     if (withOther) {
-      const topOrdersSum = entries.reduce((s, e) => s + e.orders, 0);
-      const othersOrders = Math.max(0, (apiTotal ?? summedCategoryOrders) - topOrdersSum);
-      entries.push({ key: OTHER_KEY, orders: othersOrders });
+      const topSum = entries.reduce((s, e) => s + e.orders, 0);
+      entries.push({ key: OTHER_KEY, orders: Math.max(0, total - topSum) });
     }
     return entries.sort((a, b) => b.orders - a.orders);
   }, [categoryTotals, topCategories, withOther, apiTotal, summedCategoryOrders]);

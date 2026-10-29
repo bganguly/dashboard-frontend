@@ -15,7 +15,6 @@ const OTHER_KEY = "Others";
 const OTHER_COLOR = "#94a3b8";
 const COLORS = ["#6366f1","#22c55e","#f59e0b","#ef4444","#06b6d4","#a855f7","#ec4899"];
 const STACK_ID = "aggregates";
-const DRAG_DEBOUNCE_MS = 250;
 
 function isOther(n: string) { const v = n.trim().toLowerCase(); return v === "other" || v === "others"; }
 
@@ -74,10 +73,10 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDragRef = useRef<{ from: string; to: string } | null>(null);
-  const mouseDownRef = useRef(false);
   const onRangeChangeRef = useRef(onRangeChange);
+  const rangeRef = useRef(range);
+  const chartRef = useRef<HTMLElement | null>(null);
   const [apiTotal, setApiTotal] = useState<number | null>(null);
 
   // A brush drag calls fetchAggregates directly, then (via onRangeChange)
@@ -136,22 +135,24 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   }, [fetchAggregates, filters?.from, filters?.to, backendReady]);
 
   useEffect(() => { onRangeChangeRef.current = onRangeChange; }, [onRangeChange]);
+  useEffect(() => { rangeRef.current = range; }, [range]);
 
   useEffect(() => {
-    const onDown = () => { mouseDownRef.current = true; };
-    const onUp = () => {
-      mouseDownRef.current = false;
-      if (!pendingDragRef.current) return;
-      const { from, to } = pendingDragRef.current;
+    const el = chartRef.current;
+    if (!el) return;
+    const handleRelease = () => {
+      const pending = pendingDragRef.current;
+      if (!pending) return;
       pendingDragRef.current = null;
-      onRangeChangeRef.current?.(from, to);
+      fetchAggregates(pending.from, pending.to);
+      onRangeChangeRef.current?.(pending.from, pending.to);
     };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("mouseup", onUp); };
-  }, []);
+    el.addEventListener("mouseup", handleRelease);
+    el.addEventListener("touchend", handleRelease);
+    return () => { el.removeEventListener("mouseup", handleRelease); el.removeEventListener("touchend", handleRelease); };
+  }, [fetchAggregates]);
 
-  useEffect(() => () => { abortRef.current?.abort(); lastRequestKeyRef.current = null; if (dragTimer.current) clearTimeout(dragTimer.current); }, []);
+  useEffect(() => () => { abortRef.current?.abort(); lastRequestKeyRef.current = null; }, []);
 
   // Keep ref in sync so the effect below doesn't need onTotalChange as a dep.
   useEffect(() => { onTotalChangeRef.current = onTotalChange; });
@@ -221,19 +222,15 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
   }, [seriesRanked]);
 
   const handleBrushChange = useCallback(({ startIndex, endIndex }: { startIndex?: number; endIndex?: number }) => {
-    if (!mouseDownRef.current) { console.log("[Chart] Brush auto-fire ignored (no mousedown)"); return; }
     if (startIndex == null || endIndex == null || !buckets.length || startIndex < 0 || endIndex >= buckets.length) return;
     const from = String(buckets[startIndex].date); const to = String(buckets[endIndex].date);
-    console.log("[Chart] Brush drag — from:", from, "to:", to);
-    if (from === range.from && to === range.to) return;
+    if (from === rangeRef.current.from && to === rangeRef.current.to) return;
     setRange({ from, to });
     pendingDragRef.current = { from, to };
-    if (dragTimer.current) clearTimeout(dragTimer.current);
-    dragTimer.current = setTimeout(() => { fetchAggregates(from, to); }, DRAG_DEBOUNCE_MS);
-  }, [buckets, range.from, range.to, fetchAggregates]);
+  }, [buckets]);
 
   return (
-    <section data-testid="chart" data-loading={loading ? "true" : undefined}
+    <section ref={chartRef} data-testid="chart" data-loading={loading ? "true" : undefined}
       className="relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <header className="mb-3 flex items-center justify-between">
         <div>
@@ -296,7 +293,7 @@ export default function Chart({ endpoint = "/api/aggregates", topN = DEFAULT_TOP
                   radius={i === seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
                   shape={(props: object) => <g data-testid="chart-bar" data-category={key}><Rectangle {...props} /></g>} />
               ))}
-              <Brush key={`${rawData[0]?.date ?? ''}_${rawData[rawData.length - 1]?.date ?? ''}`} dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
+              <Brush dataKey="date" height={28} stroke="#6366f1" fill={isDark ? "#111827" : "#fff"} travellerWidth={10} tickFormatter={compactBrushDate} onChange={handleBrushChange} />
             </BarChart>
           </ResponsiveContainer>
         </>

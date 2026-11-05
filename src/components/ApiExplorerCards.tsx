@@ -84,7 +84,7 @@ export function SearchCard() {
           <input
             value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => e.key === "Enter" && run()}
-            placeholder="e.g. gupta, sara, east…"
+            placeholder="e.g. kihn, saturday, perishable…"
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
               color: "#e4e4e7", borderRadius: "0.5rem", padding: "0.375rem 0.75rem",
               fontSize: "0.8rem", fontFamily: "monospace", outline: "none", width: "220px" }}
@@ -199,7 +199,7 @@ export function CustomersCard() {
           <input
             value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => e.key === "Enter" && run()}
-            placeholder="e.g. gupta, sara…"
+            placeholder="e.g. kihn, flo…"
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
               color: "#e4e4e7", borderRadius: "0.5rem", padding: "0.375rem 0.75rem",
               fontSize: "0.8rem", fontFamily: "monospace", outline: "none", width: "200px" }}

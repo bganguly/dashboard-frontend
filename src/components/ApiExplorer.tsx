@@ -10,6 +10,7 @@ const SLOW_WAKING_MS = 800;
 export default function ApiExplorer() {
   const [wakeStatus, setWakeStatus] = useState<WakeStatus>(null);
   const [wakeMs, setWakeMs] = useState(0);
+  const [bounds, setBounds] = useState<{ from: string; to: string } | null>(null);
   const wakeStart   = useRef(0);
   const wakeInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const slowTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,7 +31,13 @@ export default function ApiExplorer() {
       readyTimer.current = setTimeout(() => setWakeStatus(s => (s === "ready" ? null : s)), 1200);
     };
 
-    fetch("/api/orders?pageSize=10&sort=placedAt&dir=desc").then(r => r.ok ? r.json() : Promise.reject()).then(markReady).catch(markReady);
+    Promise.all([
+      fetch("/api/orders?pageSize=20&sort=placedAt&dir=desc").then(r => r.ok ? r.json() : Promise.reject()),
+      fetch("/api/dataset-bounds").then(r => r.ok ? r.json() : Promise.reject()),
+    ]).then(([, b]) => {
+      setBounds(b as { from: string; to: string });
+      markReady();
+    }).catch(markReady);
 
     return () => {
       if (slowTimer.current)    clearTimeout(slowTimer.current);
@@ -71,7 +78,7 @@ export default function ApiExplorer() {
                 background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.30)",
                 color: "#fbbf24", borderRadius: "0.5rem", padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}>
                 <Spinner />
-                Probing GET /api/orders —
+                Probing backend · fetching bounds —
                 <span style={{ fontFamily: "monospace", marginLeft: "4px" }}>{(wakeMs / 1000).toFixed(1)}s</span>
               </div>
             )}
@@ -116,10 +123,10 @@ export default function ApiExplorer() {
         display: "flex", flexDirection: "column", gap: "1.25rem" }}>
         <OrdersCard />
         <SearchCard />
-        <AggregatesCard />
+        <AggregatesCard bounds={bounds} />
         <CustomersCard />
         <RegionsCard />
-        <BrushCard />
+        <BrushCard bounds={bounds} />
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   fetchTimed, maybeAsleep,
   MetaBar, RawJson, OrderTable, CustomerTable, StatGrid, AggTable,
@@ -112,11 +112,17 @@ export function SearchCard() {
   );
 }
 
-export function AggregatesCard() {
-  const today  = new Date().toISOString().slice(0, 10);
-  const ago60  = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
-  const [from, setFrom] = useState(ago60);
-  const [to,   setTo]   = useState(today);
+export function AggregatesCard({ bounds }: { bounds?: { from: string; to: string } | null }) {
+  const [from, setFrom] = useState(() => new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10));
+  const [to,   setTo]   = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    if (!bounds?.to) return;
+    const d = new Date(`${bounds.to}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 90);
+    setFrom(d.toISOString().slice(0, 10));
+    setTo(bounds.to);
+  }, [bounds?.to]);
   const [loading, setLoading] = useState(false);
   const [slow, setSlow]       = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -276,7 +282,7 @@ export function RegionsCard() {
   );
 }
 
-export function BrushCard() {
+export function BrushCard({ bounds }: { bounds?: { from: string; to: string } | null }) {
   const [phase, setPhase]     = useState<"idle" | "loading" | "ready">("idle");
   const [brushData, setBD]    = useState<DayRow[]>([]);
   const [brushL, setBL]       = useState(0);
@@ -311,8 +317,8 @@ export function BrushCard() {
 
   async function initBrush() {
     setPhase("loading");
-    const today = new Date().toISOString().slice(0, 10);
-    const ago   = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    const today = bounds?.to ?? new Date().toISOString().slice(0, 10);
+    const ago   = (() => { const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 90); return d.toISOString().slice(0, 10); })();
     try {
       const { json, ms } = await fetchTimed(`/api/aggregates?from=${ago}&to=${today}&topCategories=4`);
       const raw  = (json as { data?: DayRow[] })?.data ?? (json as DayRow[]);
